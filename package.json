@@ -1,6 +1,6 @@
 {
-  "name": "Node-Media-Server-NG",
-  "version": "1.0.0",
+  "name": "node-media-server",
+  "version": "2.0.0",
   "description": "Next Generation of NodeMediaServer",
   "main": "index.js",
   "scripts": {
@@ -8,15 +8,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/illuspas/Node-Media-Server-NG.git"
+    "url": "git+https://github.com/illuspas/Node-Media-Server.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ['mediaserver','http','flv'],
+  "author": "Mingliang Chen",
+  "license": "AGPLv3",
   "bugs": {
-    "url": "https://github.com/illuspas/Node-Media-Server-NG/issues"
+    "url": "https://github.com/illuspas/Node-Media-Server/issues"
   },
-  "homepage": "https://github.com/illuspas/Node-Media-Server-NG#readme",
+  "homepage": "https://github.com/illuspas/Node-Media-Server#readme",
   "dependencies": {
     "express": "^4.16.4",
     "ws": "^6.1.3"
