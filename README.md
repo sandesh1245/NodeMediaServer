@@ -4,6 +4,7 @@ Next Generation of NodeMediaServer
 ## 特性
  * 支持http-flv 推流
  * 支持http-flv, websocket-flv 播放
+ * 支持Gop Cache
 
 ## 推流方式
 
