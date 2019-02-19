@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/illuspas/Node-Media-Server.git"
   },
-  "keywords": ['mediaserver','http','flv'],
+  "keywords": ["mediaserver","http","flv"],
   "author": "Mingliang Chen",
   "license": "AGPLv3",
   "bugs": {
