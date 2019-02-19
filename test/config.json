@@ -1,0 +1,14 @@
+{
+  "log_level": 3,
+  "gop_cache": true,
+  "http": {
+    "port": 8000,
+    "chunked_encoding": false
+  },
+
+  "https": {
+    "port": 8443,
+    "key": "./server.key",
+    "cert": "./server.cert"
+  }
+}

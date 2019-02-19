@@ -1,0 +1,24 @@
+{
+  "name": "Node-Media-Server-NG",
+  "version": "1.0.0",
+  "description": "Next Generation of NodeMediaServer",
+  "main": "index.js",
+  "scripts": {
+    "test": "cd test; node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/illuspas/Node-Media-Server-NG.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/illuspas/Node-Media-Server-NG/issues"
+  },
+  "homepage": "https://github.com/illuspas/Node-Media-Server-NG#readme",
+  "dependencies": {
+    "express": "^4.16.4",
+    "ws": "^6.1.3"
+  }
+}
