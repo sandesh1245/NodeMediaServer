@@ -14,7 +14,7 @@ Next Generation of Node-Media-Server
  * 支持录制
  * PM2统计插件
  * Web管理后台
- * 支持GB28181、JTT1076媒体格式接入
+ * 支持GB28181、JT/T1078媒体格式接入
  
 ## 推流方式
 
