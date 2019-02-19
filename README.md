@@ -12,6 +12,7 @@ Next Generation of Node-Media-Server
  * 支持WebRtc、RTSP、RTMP推流与播放
  * 支持集群模式
  * 支持录制
+ * PM2统计插件
  * Web管理后台
  * 支持GB28181、JTT1076媒体格式接入
  
