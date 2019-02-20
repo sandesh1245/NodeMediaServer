@@ -46,13 +46,12 @@ class NodeFlvSession extends NodeBaseSession {
       this.res.end = this.res.close;
       this.res.once('close', this.stop.bind(this));
       this.res.once('error', this.stop.bind(this));
-      this.req.query = this.req.query || {};
     } else {
       this.res.useChunkedEncodingByDefault = !!this.cfg.http.chunked_encoding;
       this.req.once('close', this.stop.bind(this));
       this.req.once('error', this.stop.bind(this));
     }
-
+    
     if (this.isPlay) {
       //play session
       Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} arg=${JSON.stringify(this.req.query)} via=${this.tag}`);

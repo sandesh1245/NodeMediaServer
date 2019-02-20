@@ -82,6 +82,7 @@ class NodeHttpServer {
       let p = ext[0].split('/');
       if (p.length === 3) {
         req.params = { app: p[1], name: p[2] };
+        req.query = wsUrl.query;
         let session = new NodeFlvSession(this.ctx, req, ws);
         session.run();
       }
