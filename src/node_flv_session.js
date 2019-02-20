@@ -25,14 +25,15 @@ class NodeFlvSession extends NodeBaseSession {
     this.streamName = req.params.name;
     this.streamPath = `/${req.params.app}/${req.params.name}`;
     this.isWebSocket = res.constructor.name === 'WebSocket';
+    this.isStart = false;
     this.isIdle = false;
     this.isPlay = this.req.method === 'GET';
     this.isPublish = this.req.method === 'POST';
-    this.isStart = false;
+    this.receiveAudio = true;
+    this.receiveVideo = true;
     this.hasAudio = true;
     this.hasVideo = true;
     this.gopCacheQueue = null;
-
     this.ses.set(this.id, this);
   }
 
@@ -45,6 +46,7 @@ class NodeFlvSession extends NodeBaseSession {
       this.res.end = this.res.close;
       this.res.once('close', this.stop.bind(this));
       this.res.once('error', this.stop.bind(this));
+      this.req.query = this.req.query || {};
     } else {
       this.res.useChunkedEncodingByDefault = !!this.cfg.http.chunked_encoding;
       this.req.once('close', this.stop.bind(this));
@@ -110,40 +112,58 @@ class NodeFlvSession extends NodeBaseSession {
   }
 
   async handlePlay() {
-    if (!this.pbs.has(this.streamPath)) {
-      this.isIdle = true;
-      this.idl.add(this.id);
-      Logger.log(`Idle Player id=${this.id}`);
-      await this.waitIdle();
-      this.idl.delete(this.id);
-      this.isIdle = false;
-    }
-
-    if (this.pbs.has(this.streamPath)) {
-      let publisherId = this.pbs.get(this.streamPath);
-      let publiser = this.ses.get(publisherId);
-      publiser.players.add(this.id);
-
-      this.res.write(FLV.NodeFlvMuxer.createFlvHeader(publiser.hasAudio, publiser.hasVideo));
-
-      if (publiser.flvDemuxer.medaData) {
-        this.res.write(FLV.NodeFlvMuxer.createFlvTag(18, 0, publiser.flvDemuxer.medaData));
-      }
-      if (publiser.flvDemuxer.aacSequenceHeader) {
-        this.res.write(FLV.NodeFlvMuxer.createFlvTag(8, 0, publiser.flvDemuxer.aacSequenceHeader));
-      }
-      if (publiser.flvDemuxer.avcSequenceHeader) {
-        this.res.write(FLV.NodeFlvMuxer.createFlvTag(9, 0, publiser.flvDemuxer.avcSequenceHeader));
+    try {
+      if (!this.pbs.has(this.streamPath)) {
+        this.isIdle = true;
+        this.idl.add(this.id);
+        Logger.log(`Idle Player id=${this.id}`);
+        await this.waitIdle();
+        this.idl.delete(this.id);
+        this.isIdle = false;
       }
 
-      if (publiser.gopCacheQueue) {
-        for (let chunk of publiser.gopCacheQueue) {
-          this.res.write(chunk);
+      if (this.pbs.has(this.streamPath)) {
+        let publisherId = this.pbs.get(this.streamPath);
+        let publiser = this.ses.get(publisherId);
+        publiser.players.add(this.id);
+
+        this.receiveAudio = !(this.req.query.receiveaudio === '0');
+        this.receiveVideo = !(this.req.query.receivevideo === '0');
+        if (!this.receiveAudio && !this.receiveVideo) {
+          throw 'Must receive at least one stream';
         }
+        Logger.debug(`Info Player id=${this.id} receiveAudio=${this.receiveAudio} receiveVideo=${this.receiveVideo}`);
+
+        this.res.write(FLV.NodeFlvMuxer.createFlvHeader(publiser.hasAudio && this.receiveAudio, publiser.hasVideo && this.receiveVideo));
+
+        if (publiser.flvDemuxer.medaData) {
+          this.res.write(FLV.NodeFlvMuxer.createFlvTag(18, 0, publiser.flvDemuxer.medaData));
+        }
+        if (publiser.flvDemuxer.aacSequenceHeader && this.receiveAudio) {
+          this.res.write(FLV.NodeFlvMuxer.createFlvTag(8, 0, publiser.flvDemuxer.aacSequenceHeader));
+        }
+        if (publiser.flvDemuxer.avcSequenceHeader && this.receiveVideo) {
+          this.res.write(FLV.NodeFlvMuxer.createFlvTag(9, 0, publiser.flvDemuxer.avcSequenceHeader));
+        }
+
+        if (publiser.gopCacheQueue) {
+          for (let chunk of publiser.gopCacheQueue) {
+            if(chunk[0] === 8 && !this.receiveAudio) {
+              continue;
+            }
+            if(chunk[0] === 9 && !this.receiveVideo) {
+              continue;
+            }
+            this.res.write(chunk);
+          }
+        }
+        Logger.log(`Start Player id=${this.id}`);
+        await this.waitIdle();
       }
-      Logger.log(`Start Player id=${this.id}`);
-      await this.waitIdle();
+    } catch (error) {
+      Logger.log(`Error Player id=${this.id} ${error}`);
     }
+
     this.stop();
   }
 
@@ -195,9 +215,11 @@ class NodeFlvSession extends NodeBaseSession {
     let flvTag = FLV.NodeFlvMuxer.createFlvTag(8, pts, data);
 
     if (flags === 0) {
-      Logger.debug(`Info Publisher Audio samplerate=${this.flvDemuxer.audioSamplerate} channels=${this.flvDemuxer.audioChannels} code=${this.flvDemuxer.audioCodecName} profile=${
-        this.flvDemuxer.audioProfileName
-      }`);
+      Logger.debug(
+        `Info Publisher Audio samplerate=${this.flvDemuxer.audioSamplerate} channels=${this.flvDemuxer.audioChannels} code=${this.flvDemuxer.audioCodecName} profile=${
+          this.flvDemuxer.audioProfileName
+        }`
+      );
     }
 
     if (this.gopCacheQueue) {
@@ -206,6 +228,9 @@ class NodeFlvSession extends NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
+      if(!player.receiveAudio) {
+        continue;
+      }
       player.res.write(flvTag);
     }
   }
@@ -215,7 +240,11 @@ class NodeFlvSession extends NodeBaseSession {
     if (code === 7 || code === 12) {
       if (flags === 0) {
         this.gopCacheQueue = this.cfg.gop_cache && this.hasVideo ? new Set() : null;
-        Logger.debug(`Info Publisher Video size=${this.flvDemuxer.videoWidth}x${this.flvDemuxer.videoHeight} code=${this.flvDemuxer.videoCodecName} profile=${this.flvDemuxer.videoProfileName}`);
+        Logger.debug(
+          `Info Publisher Video size=${this.flvDemuxer.videoWidth}x${this.flvDemuxer.videoHeight} code=${this.flvDemuxer.videoCodecName} profile=${
+            this.flvDemuxer.videoProfileName
+          }`
+        );
       } else if (flags === 1) {
         this.gopCacheQueue.clear();
       }
@@ -226,6 +255,9 @@ class NodeFlvSession extends NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
+      if(!player.receiveVideo) {
+        continue;
+      }
       player.res.write(flvTag);
     }
   }
