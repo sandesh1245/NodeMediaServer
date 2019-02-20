@@ -9,12 +9,13 @@ Next Generation of Node-Media-Server
 
 ## 计划(挖坑)
  * 基于N-API实现内部音频转码器(speex,nellymoser,g.711 ==> AAC/OPUS，AAC <==> OPUS)
+ * 或者牺牲一定性能用 WASM + worker_threads 实现转码器换来跨平台能力 ？？
  * 支持WebRtc、RTSP、RTMP推流与播放
  * 支持集群模式
  * 支持录制
  * PM2统计插件
  * Web管理后台
- * 支持GB28181、JTT1076媒体格式接入
+ * 支持GB28181、JT/T1078媒体格式接入
  
 ## 推流方式
 
