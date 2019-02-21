@@ -29,7 +29,7 @@ class NodeIpcServer {
       process.send({ cmd: 'postPublish', pid: process.pid, port: this.ipcPort, streamPath: arg.streamPath });
     });
 
-    process.on('message', (msg) => {
+    process.on('message', msg => {
       if (this.ipcPort === msg.port) {
         Logger.debug('Current process, ignore');
         return;
@@ -38,15 +38,11 @@ class NodeIpcServer {
       Logger.debug(`IPC receive message from pid=${msg.pid} cmd=${msg.cmd} port=${msg.port} streamPath=${msg.streamPath}`);
 
       if (msg.cmd === 'postPublish') {
-        let pullPath = `http://127.0.0.1:${msg.port}${msg.streamPath}.flv`;
-        let pushPath = `http://127.0.0.1:${this.ipcPort}${msg.streamPath}.flv`;
         let relaySession = new NodeHttpRelay();
-        console.log(pullPath,pushPath);
-        relaySession.pull(pullPath);
-        relaySession.push(pushPath);
+        relaySession.pull('127.0.0.1', msg.port, msg.streamPath + '.flv');
+        relaySession.push('127.0.0.1', this.ipcPort, msg.streamPath + '.flv');
         relaySession.start();
       }
-
     });
   }
 

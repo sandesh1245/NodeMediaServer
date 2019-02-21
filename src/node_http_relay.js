@@ -1,4 +1,3 @@
-const { URL } = require('url');
 const Http = require('http');
 const EventEmitter = require('events');
 
@@ -8,35 +7,46 @@ class NodeHttpRelay extends EventEmitter {
     this.isStart = false;
   }
 
-  pull(url) {
-    this.pullUrl = url;
+  pull(host, port, path) {
+    this.pullHost = host;
+    this.pullPort = port;
+    this.pullPath = path;
   }
 
-  push(url) {
-    this.pushUrl = url;
+  push(host, port, path) {
+    this.pushHost = host;
+    this.pushPort = port;
+    this.pushPath = path;
   }
 
   start() {
-    const pullOpt = new URL(this.pullUrl);
-    pullOpt.method = 'GET';
-    pullOpt.headers = { 'Connect-Type': 'nms-relay' };
-
-    const pushURL = new URL(this.pushUrl);
+    const pullOpt = {
+      hostname: this.pullHost,
+      port: this.pullPort,
+      path: this.pullPath,
+      method: 'GET',
+      headers: {
+        'Connect-Type': 'nms-relay'
+      }
+    };
     const pushOpt = {
-      hostname: pushURL.hostname,
-      port: pushURL.port,
-      path: pushURL.pathname,
+      hostname: this.pushHost,
+      port: this.pushPort,
+      path: this.pushPath,
       method: 'POST',
       headers: {
         'Connect-Type': 'nms-relay'
       }
     };
 
-    let pushReq = Http.request(pushOpt, res => {});
+    let pushReq = Http.request(pushOpt);
     let pullReq = Http.request(pullOpt, res => {
       this.isStart = true;
       this.emit('start');
-      res.pipe(pushReq, { end: true });
+      res.pipe(
+        pushReq,
+        { end: true }
+      );
     });
 
     pullReq.once('close', this.stop.bind(this));
