@@ -56,9 +56,26 @@ ffmpeg -re -i STREAM.mp4 -c copy -f flv http://192.168.0.10:8000/live/stream.flv
 ```
 
 ## 播放方法
-
+### ffplay vlc ...
 ```bash
 ffplay http://192.168.0.10:8000/live/stream.flv
+```
+### flv.js
+```html
+<script src="https://cdn.bootcss.com/flv.js/1.5.0/flv.min.js"></script>
+<video id="videoElement"></video>
+<script>
+    if (flvjs.isSupported()) {
+        var videoElement = document.getElementById('videoElement');
+        var flvPlayer = flvjs.createPlayer({
+            type: 'flv',
+            url: 'http://192.168.0.10:8000/live/stream.flv'
+        });
+        flvPlayer.attachMediaElement(videoElement);
+        flvPlayer.load();
+        flvPlayer.play();
+    }
+</script>
 ```
 
 ### 不接收音频流
