@@ -1,6 +1,7 @@
 {
   "log_level": 3,
   "gop_cache": true,
+  "worker": 2,
   "http": {
     "port": 8000,
     "chunked_encoding": false
