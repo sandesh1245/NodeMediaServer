@@ -6,12 +6,12 @@ Next Generation of Node-Media-Server
  * 支持http-flv, websocket-flv 播放
  * 支持Gop Cache
  * 支持H.265 over FLV (id=12)
-
+ * 支持auto_push多进程模式，高效利用多核
+ 
 ## 计划(挖坑)
  * 基于N-API实现内部音频转码器(speex,nellymoser,g.711 ==> AAC/OPUS，AAC <==> OPUS)
  * 或者牺牲一定性能用 WASM + worker_threads 实现转码器换来跨平台能力 ？？
  * 支持WebRtc、RTSP、RTMP推流与播放
- * 支持集群模式
  * 支持录制
  * PM2统计插件
  * Web管理后台
