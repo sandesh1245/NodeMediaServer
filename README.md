@@ -6,6 +6,7 @@ Next Generation of Node-Media-Server
 ```bash
 git clone -b v2 https://github.com/illuspas/Node-Media-Server.git
 cd Node-Media-Server
+npm i
 npm test
 ```
 ## 配置说明
