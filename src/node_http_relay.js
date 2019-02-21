@@ -30,7 +30,7 @@ class NodeHttpRelay extends EventEmitter {
       }
     };
 
-    let pushReq = Http.request(this.pushUrl, pushOpt);
+    let pushReq = Http.request(this.pushUrl, pushOpt, res=>{});
     let pullReq = Http.get(this.pullUrl, pullOpt, res => {
       this.isStart = true;
       this.emit('start');

@@ -13,7 +13,8 @@ const NodeBaseSession = require('./node_base_session');
 class NodeFlvSession extends NodeBaseSession {
   constructor(ctx, req, res) {
     super(req);
-    this.ip = req.socket.remoteAddress;
+    this.ip = req.socket.remoteAddress; //.replace(/^.*:/, '');
+    this.evt = ctx.evt;
     this.cfg = ctx.cfg;
     this.ses = ctx.ses;
     this.pbs = ctx.pbs;
@@ -25,7 +26,10 @@ class NodeFlvSession extends NodeBaseSession {
     this.streamName = req.params.name;
     this.streamPath = `/${req.params.app}/${req.params.name}`;
     this.isWebSocket = res.constructor.name === 'WebSocket';
+    this.isReject = false;
     this.isStart = false;
+    this.isLocal = this.ip === '127.0.0.1';
+    this.isRelay = req.headers['connect-type'] === 'nms-relay' && this.isLocal;
     this.isIdle = false;
     this.isPlay = this.req.method === 'GET';
     this.isPublish = this.req.method === 'POST';
@@ -51,7 +55,12 @@ class NodeFlvSession extends NodeBaseSession {
       this.req.once('close', this.stop.bind(this));
       this.req.once('error', this.stop.bind(this));
     }
-    
+    this.eventArg = { ip: this.ip, streamPath: this.streamPath, query: this.req.query, tag: this.tag };
+    this.emit('preConnect', this.id, this.eventArg);
+    if (this.isReject) {
+      return this.stop();
+    }
+    this.emit('postConnect', this.id, this.eventArg);
     if (this.isPlay) {
       //play session
       Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} arg=${JSON.stringify(this.req.query)} via=${this.tag}`);
@@ -63,6 +72,10 @@ class NodeFlvSession extends NodeBaseSession {
     } else {
       //other
     }
+  }
+
+  reject() {
+    this.isReject = true;
   }
 
   stop() {
@@ -77,6 +90,7 @@ class NodeFlvSession extends NodeBaseSession {
         if (publiser) {
           publiser.players.delete(this.id);
         }
+        this.emit('donePlay', this.id, this.eventArg);
         Logger.log(`Close Player id=${this.id}`);
       }
 
@@ -98,7 +112,7 @@ class NodeFlvSession extends NodeBaseSession {
           this.gopCacheQueue.clear();
           this.gopCacheQueue = undefined;
         }
-
+        this.emit('donePublish', this.id, this.eventArg);
         Logger.log(`Close Publisher id=${this.id}`);
       }
 
@@ -107,11 +121,17 @@ class NodeFlvSession extends NodeBaseSession {
       }
 
       this.ses.delete(this.id);
+      this.emit('doneConnect', this.id, this.eventArg);
     }
   }
 
   async handlePlay() {
     try {
+      this.emit('prePlay', this.id, this.eventArg);
+      if (this.isReject) {
+        return this.stop();
+      }
+
       if (!this.pbs.has(this.streamPath)) {
         this.isIdle = true;
         this.idl.add(this.id);
@@ -132,7 +152,7 @@ class NodeFlvSession extends NodeBaseSession {
           throw 'Must receive at least one stream';
         }
         Logger.debug(`Info Player id=${this.id} receiveAudio=${this.receiveAudio} receiveVideo=${this.receiveVideo}`);
-
+        this.emit('postPlay', this.id, this.eventArg);
         this.res.write(FLV.NodeFlvMuxer.createFlvHeader(publiser.hasAudio && this.receiveAudio, publiser.hasVideo && this.receiveVideo));
 
         if (publiser.flvDemuxer.medaData) {
@@ -147,10 +167,10 @@ class NodeFlvSession extends NodeBaseSession {
 
         if (publiser.gopCacheQueue) {
           for (let chunk of publiser.gopCacheQueue) {
-            if(chunk[0] === 8 && !this.receiveAudio) {
+            if (chunk[0] === 8 && !this.receiveAudio) {
               continue;
             }
-            if(chunk[0] === 9 && !this.receiveVideo) {
+            if (chunk[0] === 9 && !this.receiveVideo) {
               continue;
             }
             this.res.write(chunk);
@@ -162,12 +182,22 @@ class NodeFlvSession extends NodeBaseSession {
     } catch (error) {
       Logger.log(`Error Player id=${this.id} ${error}`);
     }
-
     this.stop();
+  }
+
+  emit(env, id, arg) {
+    if(!this.isRelay) {
+      this.evt.emit(env, id, arg);
+    }
   }
 
   async handlePublish() {
     try {
+      this.emit('prePublish', this.id, this.eventArg);
+      if (this.isReject) {
+        return this.stop();
+      }
+
       if (this.pbs.has(this.streamPath)) {
         throw 'Already has a stream publish to ' + this.streamPath;
       }
@@ -176,6 +206,7 @@ class NodeFlvSession extends NodeBaseSession {
       if (flvHeader.readUIntBE(0, 3) != 4607062) {
         throw 'Not a flv stream';
       }
+
       this.pbs.set(this.streamPath, this.id);
       this.players = new Set();
       this.flvDemuxer = new FLV.NodeFlvDemuxer();
@@ -189,6 +220,7 @@ class NodeFlvSession extends NodeBaseSession {
         let player = this.ses.get(idleId);
         player.stopIdle();
       }
+      this.emit('postPublish', this.id, this.eventArg);
       Logger.log(`Start Publisher id=${this.id}`);
       while (this.isStart) {
         let tagHeader = await this.readStream(11);
@@ -207,6 +239,7 @@ class NodeFlvSession extends NodeBaseSession {
         Logger.log(`Error Publisher id=${this.id} ${error}`);
       }
     }
+
     this.stop();
   }
 
@@ -227,7 +260,7 @@ class NodeFlvSession extends NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
-      if(!player.receiveAudio) {
+      if (!player.receiveAudio) {
         continue;
       }
       player.res.write(flvTag);
@@ -254,7 +287,7 @@ class NodeFlvSession extends NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
-      if(!player.receiveVideo) {
+      if (!player.receiveVideo) {
         continue;
       }
       player.res.write(flvTag);

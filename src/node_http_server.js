@@ -30,7 +30,7 @@ class NodeHttpServer {
 
     if (this.cfg.http) {
       this.httpServer = Http.createServer(app);
-      this.httpServer.listen(this.port, () => {
+      this.httpServer.listen(this.port, '0.0.0.0', () => {
         Logger.log('Node Media HTTP/WS server listen on ' + this.port);
       });
       this.wsServer = new WebSocket.Server({ server: this.httpServer });
@@ -44,7 +44,7 @@ class NodeHttpServer {
         let certificate = Fs.readFileSync(this.cfg.https.cert, 'utf8');
         let credentials = { key: privateKey, cert: certificate };
         this.httpsServer = Https.createServer(credentials, app);
-        this.httpsServer.listen(this.sport, () => {
+        this.httpsServer.listen(this.sport, '0.0.0.0', () => {
           Logger.log('Node Media HTTPS/WSS server listen on ' + this.sport);
         });
         this.wssServer = new WebSocket.Server({ server: this.httpsServer });

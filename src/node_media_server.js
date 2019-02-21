@@ -27,20 +27,19 @@ class NodeMediaServer {
 
   run() {
     if (Cluster.isMaster) {
-      Logger.log(`Master ${process.pid} is running`);
-
-      const messageHandler = msg => {
-        for (let id in Cluster.workers) {
-          Cluster.workers[id].send(msg);
-        }
-      };
-
-      const newWorker = () => {
-        let worker = Cluster.fork();
-        worker.on('message', messageHandler);
-      };
-
       if (typeof this.ctx.cfg.worker === 'number') {
+        Logger.log(`Master ${process.pid} is running`);
+
+        const messageHandler = msg => {
+          for (let id in Cluster.workers) {
+            Cluster.workers[id].send(msg);
+          }
+        };
+  
+        const newWorker = () => {
+          let worker = Cluster.fork();
+          worker.on('message', messageHandler);
+        };
         const num = this.ctx.cfg.worker > 0 ? this.ctx.cfg.worker : numCPUs;
         for (let i = 0; i < num; i++) {
           newWorker();
@@ -66,7 +65,7 @@ class NodeMediaServer {
       httpServer.run();
       this.servers.push(httpServer);
     }
-    if (this.ctx.cfg.worker > 1) {
+    if (typeof this.ctx.cfg.worker === 'number') {
       let ipcServer = new NodeIpcServer(this.ctx);
       ipcServer.run();
       this.servers.push(ipcServer);
