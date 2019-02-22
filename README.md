@@ -25,13 +25,17 @@ v2版开始使用配置文件
     "port": 8443,
     "key": "./server.key",
     "cert": "./server.cert"
+  },
+  "record": {
+    "path": "/var/data/media"
   }
 }
 ```
 * log_level 日志等级 0-3 
 * gop_cache 否开启gopcache为播放客户端提供秒开能力
 * worker 指定启动多少个worker（进程）提供服务，0为自动获取cpu核心数，不定义则使用单进程模式
-* chunked_encoding 播放端是否启用chunked_encoding传输
+* http.chunked_encoding 播放端是否启用chunked_encoding传输
+* record.path 实时录制直播的保存路径
 
 ## 特性
  * 支持http-flv 推流
@@ -39,14 +43,15 @@ v2版开始使用配置文件
  * 支持Gop Cache
  * 支持H.265 over FLV (id=12)
  * 支持auto_push多进程模式，高效利用多核
+ * 支持直播时录制为flv视频
  
 ## 计划(挖坑)
  * 基于N-API实现内部音频转码器(speex,nellymoser,g.711 ==> AAC/OPUS，AAC <==> OPUS)
  * 或者牺牲一定性能用 WASM + worker_threads 实现转码器换来跨平台能力 ？？
  * 支持WebRtc、RTSP、RTMP推流与播放
- * 支持录制
  * PM2统计插件
  * Web管理后台
+ * 分大小或时长分割录制
  * 支持GB28181、JT/T1078媒体格式接入
  
 ## 推流方式
