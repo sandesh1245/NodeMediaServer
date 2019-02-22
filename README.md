@@ -25,13 +25,17 @@ v2版开始使用配置文件
     "port": 8443,
     "key": "./server.key",
     "cert": "./server.cert"
+  },
+  "record": {
+    "path": "/var/data/media"
   }
 }
 ```
 * log_level 日志等级 0-3 
 * gop_cache 否开启gopcache为播放客户端提供秒开能力
 * worker 指定启动多少个worker（进程）提供服务，0为自动获取cpu核心数，不定义则使用单进程模式
-* chunked_encoding 播放端是否启用chunked_encoding传输
+* http.chunked_encoding 播放端是否启用chunked_encoding传输
+* record.path 实时录制直播的保存路径
 
 ## 特性
  * 支持http-flv 推流
