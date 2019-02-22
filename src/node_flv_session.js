@@ -21,14 +21,15 @@ class NodeFlvSession extends NodeBaseSession {
     this.idl = ctx.idl;
     this.req = req;
     this.res = res;
-    this.tag = 'http';
+    this.tag = '';
     this.streamApp = req.params.app;
     this.streamName = req.params.name;
     this.streamPath = `/${req.params.app}/${req.params.name}`;
-    this.isWebSocket = res.constructor.name === 'WebSocket';
     this.isReject = false;
     this.isStart = false;
     this.isLocal = this.ip === '127.0.0.1';
+    this.isWebSocket = res.constructor.name === 'WebSocket';
+    this.isRecord = res.constructor.name === 'WriteStream';
     this.isRelay = req.headers['connect-type'] === 'nms-relay' && this.isLocal;
     this.isIdle = false;
     this.isPlay = this.req.method === 'GET';
@@ -50,12 +51,15 @@ class NodeFlvSession extends NodeBaseSession {
       this.res.end = this.res.close;
       this.res.once('close', this.stop.bind(this));
       this.res.once('error', this.stop.bind(this));
+    } else if (this.isRecord) {
+      this.tag = 'file';
     } else {
+      this.tag = 'http';
       this.res.useChunkedEncodingByDefault = !!this.cfg.http.chunked_encoding;
       this.req.once('close', this.stop.bind(this));
       this.req.once('error', this.stop.bind(this));
     }
-    this.eventArg = { ip: this.ip, streamPath: this.streamPath, query: this.req.query, tag: this.tag };
+    this.eventArg = { ip: this.ip, streamPath: this.streamPath, streamApp: this.streamApp, streamName: this.streamName, query: this.req.query, tag: this.tag, path: this.res.path };
     this.emit('preConnect', this.id, this.eventArg);
     if (this.isReject) {
       return this.stop();
@@ -186,7 +190,7 @@ class NodeFlvSession extends NodeBaseSession {
   }
 
   emit(env, id, arg) {
-    if(!this.isRelay) {
+    if (!this.isRelay) {
       this.evt.emit(env, id, arg);
     }
   }

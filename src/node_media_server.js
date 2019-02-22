@@ -12,6 +12,8 @@ const numCPUs = require('os').cpus().length;
 const Logger = require('./node_core_logger');
 const NodeIpcServer = require('./node_ipc_server');
 const NodeHttpServer = require('./node_http_server');
+const NodeRecordServer = require('./node_record_server');
+
 
 class NodeMediaServer {
   constructor(config) {
@@ -45,7 +47,7 @@ class NodeMediaServer {
           newWorker();
         }
 
-        Cluster.on('exit', (worker, code, signal) => {
+        Cluster.on('exit', (worker) => {
           Logger.log(`Worker ${worker.process.pid} died`);
           newWorker();
         });
@@ -60,15 +62,23 @@ class NodeMediaServer {
 
   runWorker() {
     Logger.setLogLevel(this.ctx.cfg.log_level);
+
     if (this.ctx.cfg.http || this.ctx.cfg.https) {
       let httpServer = new NodeHttpServer(this.ctx);
       httpServer.run();
       this.servers.push(httpServer);
     }
-    if (typeof this.ctx.cfg.worker === 'number') {
+
+    if (typeof this.ctx.cfg.worker === 'number' && this.ctx.cfg.worker !== 1) {
       let ipcServer = new NodeIpcServer(this.ctx);
       ipcServer.run();
       this.servers.push(ipcServer);
+    }
+
+    if(this.ctx.cfg.record) {
+      let recordServer = new NodeRecordServer(this.ctx);
+      recordServer.run();
+      this.servers.push(recordServer);
     }
   }
 
