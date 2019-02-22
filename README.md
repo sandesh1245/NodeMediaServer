@@ -39,12 +39,12 @@ v2版开始使用配置文件
  * 支持Gop Cache
  * 支持H.265 over FLV (id=12)
  * 支持auto_push多进程模式，高效利用多核
+ * 支持直播时录制为flv视频
  
 ## 计划(挖坑)
  * 基于N-API实现内部音频转码器(speex,nellymoser,g.711 ==> AAC/OPUS，AAC <==> OPUS)
  * 或者牺牲一定性能用 WASM + worker_threads 实现转码器换来跨平台能力 ？？
  * 支持WebRtc、RTSP、RTMP推流与播放
- * 支持录制
  * PM2统计插件
  * Web管理后台
  * 支持GB28181、JT/T1078媒体格式接入
