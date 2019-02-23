@@ -34,6 +34,7 @@ class NodeFlvSession extends NodeBaseSession {
     this.isIdle = false;
     this.isPlay = this.req.method === 'GET';
     this.isPublish = this.req.method === 'POST';
+    this.numPlayCache = 0;
     this.receiveAudio = true;
     this.receiveVideo = true;
     this.hasAudio = true;
@@ -49,6 +50,8 @@ class NodeFlvSession extends NodeBaseSession {
       this.tag = 'ws';
       this.res.write = this.res.send;
       this.res.end = this.res.close;
+      this.res.cork = this.res.socket.cork.bind(this.res.socket);
+      this.res.uncork = this.res.socket.uncork.bind(this.res.socket);
       this.res.once('close', this.stop.bind(this));
       this.res.once('error', this.stop.bind(this));
     } else if (this.isRecord) {
@@ -56,6 +59,8 @@ class NodeFlvSession extends NodeBaseSession {
     } else {
       this.tag = 'http';
       this.res.useChunkedEncodingByDefault = !!this.cfg.http.chunked_encoding;
+      this.res.cork = this.res.socket.cork.bind(this.res.socket);
+      this.res.uncork = this.res.socket.uncork.bind(this.res.socket);
       this.req.once('close', this.stop.bind(this));
       this.req.once('error', this.stop.bind(this));
     }
@@ -268,6 +273,13 @@ class NodeFlvSession extends NodeBaseSession {
         continue;
       }
       player.res.write(flvTag);
+      player.numPlayCache++;
+      if(player.numPlayCache === 1) {
+        player.res.cork();
+      } else if(player.numPlayCache === 10) {
+        process.nextTick(() => player.res.uncork());
+        player.numPlayCache = 0;
+      }
     }
   }
 
@@ -295,6 +307,13 @@ class NodeFlvSession extends NodeBaseSession {
         continue;
       }
       player.res.write(flvTag);
+      player.numPlayCache++;
+      if(player.numPlayCache === 1) {
+        player.res.cork();
+      } else if(player.numPlayCache === 10) {
+        process.nextTick(() => player.res.uncork());
+        player.numPlayCache = 0;
+      }
     }
   }
 
