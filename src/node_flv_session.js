@@ -293,7 +293,7 @@ class NodeFlvSession extends NodeBaseSession {
             this.flvDemuxer.videoProfileName
           }`
         );
-      } else if (flags === 1) {
+      } else if (flags === 1 && this.gopCacheQueu) {
         this.gopCacheQueue.clear();
       }
       if (flags > 0 && this.gopCacheQueue) {
