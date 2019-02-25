@@ -16,18 +16,20 @@ class NodeBaseSession {
   }
 
   readStream(size) {
-    return new Promise((resolve, reject) => {
-      this._reject = reject;
-      const onReadable = () => {
-        let chunk = this.stream.read(size);
-        if (chunk != null) {
-          this.stream.removeListener('readable', onReadable);
-          resolve(chunk);
-        }
-      };
-      this.stream.on('readable', onReadable);
-      onReadable();
-    });
+    if(size > 0) {
+      return new Promise((resolve, reject) => {
+        this._reject = reject;
+        const onReadable = () => {
+          let chunk = this.stream.read(size);
+          if (chunk != null) {
+            this.stream.removeListener('readable', onReadable);
+            resolve(chunk);
+          }
+        };
+        this.stream.on('readable', onReadable);
+        onReadable();
+      });
+    }
   }
 
   stopStream() {

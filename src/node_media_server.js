@@ -11,9 +11,9 @@ const EventEmitter = require('events');
 const numCPUs = require('os').cpus().length;
 const Logger = require('./node_core_logger');
 const NodeIpcServer = require('./node_ipc_server');
+const NodeRtmpServer = require('./node_rtmp_server');
 const NodeHttpServer = require('./node_http_server');
 const NodeRecordServer = require('./node_record_server');
-
 
 class NodeMediaServer {
   constructor(config) {
@@ -37,7 +37,7 @@ class NodeMediaServer {
             Cluster.workers[id].send(msg);
           }
         };
-  
+
         const newWorker = () => {
           let worker = Cluster.fork();
           worker.on('message', messageHandler);
@@ -47,7 +47,7 @@ class NodeMediaServer {
           newWorker();
         }
 
-        Cluster.on('exit', (worker) => {
+        Cluster.on('exit', worker => {
           Logger.log(`Worker ${worker.process.pid} died`);
           newWorker();
         });
@@ -63,6 +63,12 @@ class NodeMediaServer {
   runWorker() {
     Logger.setLogLevel(this.ctx.cfg.log_level);
 
+    if (this.ctx.cfg.rtmp) {
+      let rtmpServer = new NodeRtmpServer(this.ctx);
+      rtmpServer.run();
+      this.servers.push(rtmpServer);
+    }
+
     if (this.ctx.cfg.http || this.ctx.cfg.https) {
       let httpServer = new NodeHttpServer(this.ctx);
       httpServer.run();
@@ -75,7 +81,7 @@ class NodeMediaServer {
       this.servers.push(ipcServer);
     }
 
-    if(this.ctx.cfg.record) {
+    if (this.ctx.cfg.record) {
       let recordServer = new NodeRecordServer(this.ctx);
       recordServer.run();
       this.servers.push(recordServer);

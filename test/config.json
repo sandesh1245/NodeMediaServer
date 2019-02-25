@@ -1,6 +1,10 @@
 {
   "log_level": 3,
   "gop_cache": true,
+  "rtmp": {
+    "port": 1935,
+    "chunk_size": 60000
+  },
   "http": {
     "port": 8000,
     "chunked_encoding": false
