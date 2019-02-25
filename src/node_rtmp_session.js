@@ -159,7 +159,7 @@ class NodeRtmpSession extends NodeBaseSession {
         }
 
         //read chunk
-        
+
         let nChunkSize = Math.min(this.inChunkSize, rtmpMessage.length - rtmpMessage.readBytes);
         let chunk = await this.readStream(nChunkSize);
         chunk.copy(rtmpMessage.body, rtmpMessage.readBytes);
@@ -290,6 +290,28 @@ class NodeRtmpSession extends NodeBaseSession {
     }
   }
 
+  rtmpControlHandler(rtmpMessage) {
+    let payload = rtmpMessage.body.slice(0, rtmpMessage.length);
+    switch (rtmpMessage.type) {
+    case RTMP_TYPE_SET_CHUNK_SIZE:
+      this.inChunkSize = payload.readUInt32BE();
+      // Logger.debug('set inChunkSize', this.inChunkSize);
+      break;
+    case RTMP_TYPE_ABORT:
+      break;
+    case RTMP_TYPE_ACKNOWLEDGEMENT:
+      break;
+    case RTMP_TYPE_WINDOW_ACKNOWLEDGEMENT_SIZE:
+      this.ackSize = payload.readUInt32BE();
+      // Logger.debug('set ack Size', this.ackSize);
+      break;
+    case RTMP_TYPE_SET_PEER_BANDWIDTH:
+      break;
+    }
+  }
+
+  rtmpEventHandler() {}
+
   rtmpInvokeHandler(rtmpMessage) {
     let payload = rtmpMessage.body.slice(0, rtmpMessage.length);
     let invokeMessage = AMF.decodeAmf0Cmd(payload);
@@ -331,15 +353,11 @@ class NodeRtmpSession extends NodeBaseSession {
     }
   }
 
-  rtmpVideoHandler(rtmpMessage) {
-  }
+  rtmpVideoHandler(rtmpMessage) {}
 
-  rtmpAudioHandler(rtmpMessage) {
-  }
+  rtmpAudioHandler(rtmpMessage) {}
 
-  rtmpDataHandler(rtmpMessage) {
-  
-  }
+  rtmpDataHandler(rtmpMessage) {}
   onConnect(invokeMessage) {
     invokeMessage.cmdObj.app = invokeMessage.cmdObj.app.replace('/', ''); //fix jwplayer
     this.connectCmdObj = invokeMessage.cmdObj;
@@ -358,9 +376,7 @@ class NodeRtmpSession extends NodeBaseSession {
     this.respondCreateStream(invokeMessage.transId);
   }
 
-  onDeleteStream(invokeMessage) {
-  
-  }
+  onDeleteStream(invokeMessage) {}
   onPublish(invokeMessage) {
     this.sendStatusMessage(this.publishStreamId, 'status', 'NetStream.Publish.Start', `${this.publishStreamPath} is now published.`);
   }
