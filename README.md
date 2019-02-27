@@ -48,13 +48,13 @@ v2版开始使用配置文件
 ## 计划(挖坑)
  * 基于N-API实现内部音频转码器(speex,nellymoser,g.711 ==> AAC/OPUS，AAC <==> OPUS)
  * 或者牺牲一定性能用 WASM + worker_threads 实现转码器换来跨平台能力 ？？
- * 支持WebRtc、RTSP、RTMP推流与播放
+ * 支持WebRtc、RTMP推流与播放
+ * Session Base ultra low delay HLS
+ * 支持GB28181、JT/T1078媒体格式接入
  * netdata监控插件
  * Web管理后台
- * 分大小或时长分割录制
- * 支持GB28181、JT/T1078媒体格式接入
- * Session Base HLS+
- 
+ * 大小或时长分割录制
+
 ## 推流方式
 
 ```bash
