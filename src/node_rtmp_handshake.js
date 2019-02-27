@@ -100,10 +100,10 @@ function generateS0S1S2(clientsig) {
   let messageFormat = detectClientMessageFormat(clientsig);
   let allBytes;
   if (messageFormat === MESSAGE_FORMAT_0) {
-    Logger.debug('[rtmp handshake] using simple handshake.');
+    // Logger.debug('[rtmp handshake] using simple handshake.');
     allBytes = Buffer.concat([clientType, clientsig, clientsig]);
   } else {
-    Logger.debug('[rtmp handshake] using complex handshake.');
+    // Logger.debug('[rtmp handshake] using complex handshake.');
     allBytes = Buffer.concat([clientType, generateS1(messageFormat), generateS2(messageFormat, clientsig)]);
   }
   return allBytes;

@@ -25,6 +25,7 @@ class NodeFlvSession extends NodeBaseSession {
     this.streamApp = req.params.app;
     this.streamName = req.params.name;
     this.streamPath = `/${req.params.app}/${req.params.name}`;
+    this.streamQuery = this.req.query;
     this.isReject = false;
     this.isStart = false;
     this.isLocal = this.ip === '127.0.0.1';
@@ -47,7 +48,7 @@ class NodeFlvSession extends NodeBaseSession {
     this.next = next;
     this.isStart = true;
     if (this.isWebSocket) {
-      this.tag = 'ws';
+      this.tag = 'ws-flv';
       this.res.write = this.res.send;
       this.res.end = this.res.close;
       this.res.cork = this.res.socket.cork.bind(this.res.socket);
@@ -55,16 +56,16 @@ class NodeFlvSession extends NodeBaseSession {
       this.res.once('close', this.stop.bind(this));
       this.res.once('error', this.stop.bind(this));
     } else if (this.isRecord) {
-      this.tag = 'file';
+      this.tag = 'file-flv';
     } else {
-      this.tag = 'http';
+      this.tag = 'http-flv';
       this.res.useChunkedEncodingByDefault = !!this.cfg.http.chunked_encoding;
       this.res.cork = this.res.socket.cork.bind(this.res.socket);
       this.res.uncork = this.res.socket.uncork.bind(this.res.socket);
       this.req.once('close', this.stop.bind(this));
       this.req.once('error', this.stop.bind(this));
     }
-    this.eventArg = { ip: this.ip, streamPath: this.streamPath, streamApp: this.streamApp, streamName: this.streamName, query: this.req.query, tag: this.tag, path: this.res.path };
+    this.eventArg = { ip: this.ip, tag: this.tag, streamPath: this.streamPath, streamApp: this.streamApp, streamName: this.streamName, streamQuery: this.streamQuery,  path: this.res.path };
     this.emit('preConnect', this.id, this.eventArg);
     if (this.isReject) {
       return this.stop();
@@ -72,11 +73,11 @@ class NodeFlvSession extends NodeBaseSession {
     this.emit('postConnect', this.id, this.eventArg);
     if (this.isPlay) {
       //play session
-      Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} arg=${JSON.stringify(this.req.query)} via=${this.tag}`);
+      Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
       this.handlePlay();
     } else if (this.isPublish) {
       //publish session
-      Logger.log(`New Publisher id=${this.id} ip=${this.ip} stream_path=${this.streamPath} arg=${JSON.stringify(this.req.query)}`);
+      Logger.log(`New Publisher id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
       this.handlePublish();
     } else {
       //other

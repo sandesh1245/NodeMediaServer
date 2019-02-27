@@ -3,7 +3,7 @@
   "gop_cache": true,
   "rtmp": {
     "port": 1935,
-    "chunk_size": 60000
+    "chunk_size": 128
   },
   "http": {
     "port": 8000,
