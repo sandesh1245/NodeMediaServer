@@ -210,6 +210,7 @@ function readH264SpecificConfig(avcSequenceHeader) {
     info.width = (width + 1) * 16 - (crop_left + crop_right) * 2;
     info.height = (2 - frame_mbs_only) * (height + 1) * 16 - (crop_top + crop_bottom) * 2;
   } catch (e) {
+    //
   }
 
   return info;
@@ -396,6 +397,7 @@ function readHEVCSpecificConfig(hevcSequenceHeader) {
       }
     }
   } catch (e) {
+    //
   }
 
   return info;

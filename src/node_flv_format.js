@@ -3,6 +3,104 @@ const AMF = require('./node_core_amf');
 const AV = require('./node_core_av');
 const { AUDIO_SOUND_RATE, AUDIO_SOUND_SIZE, AUDIO_CODEC_NAME, VIDEO_CODEC_NAME } = require('./node_core_av');
 
+const RTMP_CHUNK_TYPE_0 = 0; // 11-bytes: timestamp(3) + length(3) + stream type(1) + stream id(4)
+const RTMP_CHUNK_TYPE_1 = 1; //  7-bytes: delta(3) + length(3) + stream type(1)
+const RTMP_CHUNK_TYPE_2 = 2; //  3-bytes: delta(3)
+const RTMP_CHUNK_TYPE_3 = 3; //  0-bytes:
+
+const RTMP_CHUNK_HEADER_SIZE = [11, 7, 3, 0];
+
+class NodeRtmpMuxer {
+  static createRtmpMessage() {
+    return {
+      format: 0,
+      chunkId: 0,
+      timestamp: 0,
+      timestampDelta: 0,
+      length: 0,
+      type: 0,
+      streamId: 0,
+      readBytes: 0,
+      capabilities: 0,
+      payloadBuffer: null,
+      body: null
+    };
+  }
+
+  static createChunkBasicHeader(fmt, cid) {
+    let out;
+    if (cid >= 64 + 255) {
+      out = Buffer.alloc(3);
+      out[0] = (fmt << 6) | 1;
+      out[1] = (cid - 64) & 0xff;
+      out[2] = ((cid - 64) >> 8) & 0xff;
+    } else if (cid >= 64) {
+      out = Buffer.alloc(2);
+      out[0] = (fmt << 6) | 0;
+      out[1] = (cid - 64) & 0xff;
+    } else {
+      out = Buffer.alloc(1);
+      out[0] = (fmt << 6) | cid;
+    }
+    return out;
+  }
+
+  static createChunkMessageHeader(fmt, rtmpMessage) {
+    let useExtendedTimestamp = rtmpMessage.timestamp >= 0xffffff;
+    let pos = 0;
+    let out = Buffer.alloc(RTMP_CHUNK_HEADER_SIZE[fmt] + (useExtendedTimestamp ? 4 : 0));
+
+    if (fmt <= RTMP_CHUNK_TYPE_2) {
+      out.writeUIntBE(useExtendedTimestamp ? 0xffffff : rtmpMessage.timestamp, pos, 3);
+      pos += 3;
+    }
+
+    if (fmt <= RTMP_CHUNK_TYPE_1) {
+      out.writeUIntBE(rtmpMessage.length, pos, 3);
+      pos += 3;
+      out.writeUInt8(rtmpMessage.type, pos);
+      pos++;
+    }
+
+    if (fmt === RTMP_CHUNK_TYPE_0) {
+      out.writeUInt32LE(rtmpMessage.streamId, pos);
+      pos += 4;
+    }
+
+    if (useExtendedTimestamp && rtmpMessage.timestamp < 0xffffffff) {
+      out.writeUInt32BE(rtmpMessage.timestamp, pos);
+      pos += 4;
+    }
+
+    return out;
+  }
+
+  static createChunkMessage(rtmpMessage, chunkSize) {
+    let chunkBasicHeader = NodeRtmpMuxer.createChunkBasicHeader(RTMP_CHUNK_TYPE_0, rtmpMessage.chunkId);
+    let chunkBasicHeader3 = NodeRtmpMuxer.createChunkBasicHeader(RTMP_CHUNK_TYPE_3, rtmpMessage.chunkId);
+    let chunkMessageHeader = NodeRtmpMuxer.createChunkMessageHeader(RTMP_CHUNK_TYPE_0, rtmpMessage);
+    let chunks = [];
+    let writeBytes = 0;
+    while (writeBytes < rtmpMessage.length) {
+      if (chunks.length === 0) {
+        chunks.push(chunkBasicHeader);
+        chunks.push(chunkMessageHeader);
+      } else {
+        chunks.push(chunkBasicHeader3);
+      }
+      let nSize = rtmpMessage.length - writeBytes;
+      if (nSize > chunkSize) {
+        chunks.push(rtmpMessage.body.slice(writeBytes, writeBytes + chunkSize));
+        writeBytes += chunkSize;
+      } else {
+        chunks.push(rtmpMessage.body.slice(writeBytes));
+        writeBytes += nSize;
+      }
+    }
+    return Buffer.concat(chunks);
+  }
+}
+
 class NodeFlvMuxer {
   static createFlvHeader(haveAudio, haveVideo) {
     let FLVHeader = Buffer.from([0x46, 0x4c, 0x56, 0x01, 0x00, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00]);
@@ -152,6 +250,7 @@ class NodeFlvDemuxer extends EventEmitter {
 }
 
 module.exports = {
+  NodeRtmpMuxer,
   NodeFlvMuxer,
   NodeFlvDemuxer
 };

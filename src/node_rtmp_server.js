@@ -8,23 +8,21 @@ class NodeRtmpServer {
   constructor(ctx) {
     this.ctx = ctx;
     this.cfg = ctx.cfg;
-    this.port = (this.cfg.rtmp && this.cfg.rtmp.port) || RTMP_PORT;
+    this.port = this.cfg.rtmp.port || RTMP_PORT;
   }
 
   run() {
-    if (this.cfg.rtmp) {
-      this.rtmpServer = Net.createServer(socket => {
-        let session = new NodeRtmpSession(this.ctx, socket);
-        session.run();
-      });
-      this.rtmpServer.listen(this.port, '0.0.0.0', () => {
-        Logger.log('Node Media Rtmp server listen on ' + this.port);
-      });
-    }
+    this.rtmpServer = Net.createServer(socket => {
+      let session = new NodeRtmpSession(this.ctx, socket);
+      session.run();
+    });
+    this.rtmpServer.listen(this.port, '0.0.0.0', () => {
+      Logger.log('Node Media Rtmp server listen on ' + this.port);
+    });
   }
 
   stop() {
-    if(this.rtmpServer) {
+    if (this.rtmpServer) {
       this.rtmpServer.close();
     }
   }

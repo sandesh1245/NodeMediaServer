@@ -4,6 +4,7 @@ const NodeBaseSession = require('./node_base_session');
 const RtmpHandshake = require('./node_rtmp_handshake');
 const Logger = require('./node_core_logger');
 const AMF = require('./node_core_amf');
+const FLV = require('./node_flv_format');
 
 const RTMP_CHUNK_HEADER_SIZE = [11, 7, 3, 0];
 
@@ -40,11 +41,6 @@ const RTMP_TYPE_INVOKE = 20; // AMF0
 
 /* Aggregate Message */
 const RTMP_TYPE_METADATA = 22;
-
-const RTMP_CHUNK_TYPE_0 = 0; // 11-bytes: timestamp(3) + length(3) + stream type(1) + stream id(4)
-const RTMP_CHUNK_TYPE_1 = 1; //  7-bytes: delta(3) + length(3) + stream type(1)
-const RTMP_CHUNK_TYPE_2 = 2; //  3-bytes: delta(3)
-const RTMP_CHUNK_TYPE_3 = 3; //  0-bytes:
 
 const RTMP_CHUNK_SIZE = 4000;
 
@@ -136,8 +132,9 @@ class NodeRtmpSession extends NodeBaseSession {
         if (precedingRtmpMessage) {
           rtmpMessage = precedingRtmpMessage;
         } else {
-          rtmpMessage = this.newRtmpMessage();
+          rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
         }
+
         if (chunkMessageSize >= 3) {
           rtmpMessage.timestampDelta = chunkMessage.readUIntBE(0, 3);
           if (chunkMessageSize >= 7) {
@@ -154,30 +151,31 @@ class NodeRtmpSession extends NodeBaseSession {
           rtmpMessage.timestampDelta = extTimeBuf.readUInt32BE();
         }
 
-        if (fmt === 0) {
-          rtmpMessage.timestamp = rtmpMessage.timestampDelta;
-        } else {
-          rtmpMessage.timestamp += rtmpMessage.timestampDelta;
-        }
-
         //realloc payload
         if (rtmpMessage.capabilities < rtmpMessage.length) {
-          let oldBuffer = rtmpMessage.body;
+          let oldBuffer = rtmpMessage.payloadBuffer;
           rtmpMessage.capabilities = rtmpMessage.length * 2;
-          rtmpMessage.body = Buffer.alloc(rtmpMessage.capabilities);
+          rtmpMessage.payloadBuffer = Buffer.alloc(rtmpMessage.capabilities);
           if (rtmpMessage.readBytes > 0) {
-            oldBuffer.copy(rtmpMessage.body, 0, 0, rtmpMessage.readBytes);
+            oldBuffer.copy(rtmpMessage.payloadBuffer, 0, 0, rtmpMessage.readBytes);
           }
         }
 
         //read chunk
         let nChunkSize = Math.min(this.inChunkSize, rtmpMessage.length - rtmpMessage.readBytes);
         let chunk = await this.readStream(nChunkSize);
-        chunk.copy(rtmpMessage.body, rtmpMessage.readBytes);
+        chunk.copy(rtmpMessage.payloadBuffer, rtmpMessage.readBytes);
         rtmpMessage.readBytes += nChunkSize;
         if (rtmpMessage.readBytes === rtmpMessage.length) {
+          if (fmt === 0) {
+            rtmpMessage.timestamp = rtmpMessage.timestampDelta;
+          } else {
+            rtmpMessage.timestamp += rtmpMessage.timestampDelta;
+          }
+          rtmpMessage.body = rtmpMessage.payloadBuffer.slice(0, rtmpMessage.length);
           this.handleRtmpMessage(rtmpMessage);
           rtmpMessage.readBytes = 0;
+          rtmpMessage.body = null;
         }
 
         this.inMessages.set(cid, rtmpMessage);
@@ -186,94 +184,6 @@ class NodeRtmpSession extends NodeBaseSession {
       Logger.error(e);
     }
     this.stop();
-  }
-
-  newRtmpMessage() {
-    return {
-      format: 0,
-      chunkId: 0,
-      timestamp: 0,
-      timestampDelta: 0,
-      length: 0,
-      type: 0,
-      streamId: 0,
-      readBytes: 0,
-      capabilities: 0,
-      body: null
-    };
-  }
-
-  createChunkBasicHeader(fmt, cid) {
-    let out;
-    if (cid >= 64 + 255) {
-      out = Buffer.alloc(3);
-      out[0] = (fmt << 6) | 1;
-      out[1] = (cid - 64) & 0xff;
-      out[2] = ((cid - 64) >> 8) & 0xff;
-    } else if (cid >= 64) {
-      out = Buffer.alloc(2);
-      out[0] = (fmt << 6) | 0;
-      out[1] = (cid - 64) & 0xff;
-    } else {
-      out = Buffer.alloc(1);
-      out[0] = (fmt << 6) | cid;
-    }
-    return out;
-  }
-
-  createChunkMessageHeader(fmt, rtmpMessage) {
-    let useExtendedTimestamp = rtmpMessage.timestamp >= 0xffffff;
-    let pos = 0;
-    let out = Buffer.alloc(RTMP_CHUNK_HEADER_SIZE[fmt] + (useExtendedTimestamp ? 4 : 0));
-
-    if (fmt <= RTMP_CHUNK_TYPE_2) {
-      out.writeUIntBE(useExtendedTimestamp ? 0xffffff : rtmpMessage.timestamp, pos, 3);
-      pos += 3;
-    }
-
-    if (fmt <= RTMP_CHUNK_TYPE_1) {
-      out.writeUIntBE(rtmpMessage.length, pos, 3);
-      pos += 3;
-      out.writeUInt8(rtmpMessage.type, pos);
-      pos++;
-    }
-
-    if (fmt === RTMP_CHUNK_TYPE_0) {
-      out.writeUInt32LE(rtmpMessage.streamId, pos);
-      pos += 4;
-    }
-
-    if (useExtendedTimestamp && rtmpMessage.timestamp < 0xffffffff) {
-      out.writeUInt32BE(rtmpMessage.timestamp, pos);
-      pos += 4;
-    }
-
-    return out;
-  }
-
-  createChunkMessage(rtmpMessage) {
-    let chunkBasicHeader = this.createChunkBasicHeader(RTMP_CHUNK_TYPE_0, rtmpMessage.chunkId);
-    let chunkBasicHeader3 = this.createChunkBasicHeader(RTMP_CHUNK_TYPE_3, rtmpMessage.chunkId);
-    let chunkMessageHeader = this.createChunkMessageHeader(RTMP_CHUNK_TYPE_0, rtmpMessage);
-    let chunks = [];
-    let writeBytes = 0;
-    while (writeBytes < rtmpMessage.length) {
-      if (chunks.length === 0) {
-        chunks.push(chunkBasicHeader);
-        chunks.push(chunkMessageHeader);
-      } else {
-        chunks.push(chunkBasicHeader3);
-      }
-      let nSize = rtmpMessage.length - writeBytes;
-      if (nSize > this.outChunkSize) {
-        chunks.push(rtmpMessage.body.slice(writeBytes, writeBytes + this.outChunkSize));
-        writeBytes += this.outChunkSize;
-      } else {
-        chunks.push(rtmpMessage.body.slice(writeBytes));
-        writeBytes += nSize;
-      }
-    }
-    return Buffer.concat(chunks);
   }
 
   handleRtmpMessage(rtmpMessage) {
@@ -307,10 +217,9 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   rtmpControlHandler(rtmpMessage) {
-    let payload = rtmpMessage.body.slice(0, rtmpMessage.length);
     switch (rtmpMessage.type) {
     case RTMP_TYPE_SET_CHUNK_SIZE:
-      this.inChunkSize = payload.readUInt32BE();
+      this.inChunkSize = rtmpMessage.body.readUInt32BE();
       // Logger.debug('set inChunkSize', this.inChunkSize);
       break;
     case RTMP_TYPE_ABORT:
@@ -318,7 +227,7 @@ class NodeRtmpSession extends NodeBaseSession {
     case RTMP_TYPE_ACKNOWLEDGEMENT:
       break;
     case RTMP_TYPE_WINDOW_ACKNOWLEDGEMENT_SIZE:
-      this.ackSize = payload.readUInt32BE();
+      this.ackSize = rtmpMessage.body.readUInt32BE();
       // Logger.debug('set ack Size', this.ackSize);
       break;
     case RTMP_TYPE_SET_PEER_BANDWIDTH:
@@ -374,17 +283,26 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   rtmpVideoHandler(rtmpMessage) {
-    let payload = rtmpMessage.body.slice(0, rtmpMessage.length);
-    this.createChunkMessage(rtmpMessage);
+    this.flvDemuxer.parseFlvTag(rtmpMessage.type, rtmpMessage.timestamp, rtmpMessage.body);
   }
 
   rtmpAudioHandler(rtmpMessage) {
-    let payload = rtmpMessage.body.slice(0, rtmpMessage.length);
-    this.createChunkMessage(rtmpMessage);
+    this.flvDemuxer.parseFlvTag(rtmpMessage.type, rtmpMessage.timestamp, rtmpMessage.body);
   }
 
   rtmpDataHandler(rtmpMessage) {
-    let payload = rtmpMessage.body.slice(0, rtmpMessage.length);
+    this.flvDemuxer.parseFlvTag(rtmpMessage.type, rtmpMessage.timestamp, rtmpMessage.body);
+  }
+
+  onAudioData(code, pts, dts, flags, data) {
+    // Logger.debug('rtmp onAudioData', pts, dts, flags);
+  }
+
+  onVideoData(code, pts, dts, flags, data) {
+    // Logger.debug('rtmp onVideoData', pts, dts, flags);
+  }
+
+  onScriptData(time, data) {
   }
 
   onConnect(invokeMessage) {
@@ -409,13 +327,13 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   onDeleteStream(invokeMessage) {
-    if(this.streamId > 0) {
-      if(this.isPublish) {
+    if (this.streamId > 0) {
+      if (this.isPublish) {
         this.isPublish = false;
-        this.sendStatusMessage(this.streamId,'status','NetStream.Unpublish.Success','Stop publishing');
-      }else if(this.isPlay) {
+        this.sendStatusMessage(this.streamId, 'status', 'NetStream.Unpublish.Success', 'Stop publishing');
+      } else if (this.isPlay) {
         this.isPlay = false;
-        this.sendStatusMessage(this.streamId,'status','NetStream.Play.Stop','Stop live');
+        this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Stop', 'Stop live');
       }
       this.streamId = 0;
     }
@@ -442,14 +360,17 @@ class NodeRtmpSession extends NodeBaseSession {
     }
     this.pbs.set(this.streamPath, this.id);
     this.isPublish = true;
-
+    this.flvDemuxer = new FLV.NodeFlvDemuxer();
+    this.flvDemuxer.on('audio', this.onAudioData.bind(this));
+    this.flvDemuxer.on('video', this.onVideoData.bind(this));
+    this.flvDemuxer.on('script', this.onScriptData.bind(this));
     this.sendStatusMessage(this.streamId, 'status', 'NetStream.Publish.Start', `${this.publishStreamPath} is now published.`);
   }
 
   onPlay(invokeMessage) {
     Logger.debug('onPlay', invokeMessage);
     this.isPlay = true;
-    this.sendStatusMessage(this.streamId,'status','NetStream.Play.Start','Star live');
+    this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Start', 'Star live');
   }
 
   onPause(invokeMessage) {
@@ -459,7 +380,7 @@ class NodeRtmpSession extends NodeBaseSession {
   onReceiveAudio(invokeMessage) {
     Logger.debug('onReceiveAudio', invokeMessage);
   }
-  
+
   onReceiveVideo(invokeMessage) {
     Logger.debug('onReceiveVideo', invokeMessage);
   }
@@ -504,13 +425,13 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   sendInvokeMessage(sid, opt) {
-    let rtmpMessage = this.newRtmpMessage();
+    let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
     rtmpMessage.chunkId = RTMP_CHANNEL_INVOKE;
     rtmpMessage.type = RTMP_TYPE_INVOKE;
     rtmpMessage.streamId = sid;
     rtmpMessage.body = AMF.encodeAmf0Cmd(opt);
     rtmpMessage.length = rtmpMessage.body.length;
-    let chunks = this.createChunkMessage(rtmpMessage);
+    let chunks = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
     this.socket.write(chunks);
   }
 
