@@ -229,7 +229,7 @@ class NodeFlvDemuxer extends EventEmitter {
 
   handleScriptData(time, data) {
     let amf0data = AMF.decodeAmf0Data(data);
-    if (amf0data && amf0data.cmd === 'onMetaData') {
+    if (amf0data && ( amf0data.cmd === 'onMetaData' || amf0data.method === 'onMetaData' )) {
       this.metaData = data;
       this.metaDataObj = amf0data.dataObj;
       this.audioCodec = this.metaDataObj.audiocodecid || 0;
