@@ -83,13 +83,3 @@ ffplay http://192.168.0.10:8000/live/stream.flv
     }
 </script>
 ```
-
-### 不接收音频流
-```bash
-ffplay http://192.168.0.10:8000/live/stream.flv\?receiveaudio\=0
-```
-
-### 不接收视频流
-```bash
-ffplay http://192.168.0.10:8000/live/stream.flv\?receivevideo\=0
-```

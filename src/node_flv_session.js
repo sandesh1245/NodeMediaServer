@@ -36,8 +36,6 @@ class NodeFlvSession extends NodeBaseSession {
     this.isPlay = this.req.method === 'GET';
     this.isPublish = this.req.method === 'POST';
     this.numPlayCache = 0;
-    this.receiveAudio = true;
-    this.receiveVideo = true;
     this.hasAudio = true;
     this.hasVideo = true;
     this.gopCacheQueue = null;
@@ -156,33 +154,21 @@ class NodeFlvSession extends NodeBaseSession {
         let publiser = this.ses.get(publisherId);
         publiser.players.add(this.id);
 
-        this.receiveAudio = !(this.req.query.receiveaudio === '0');
-        this.receiveVideo = !(this.req.query.receivevideo === '0');
-        if (!this.receiveAudio && !this.receiveVideo) {
-          throw 'Must receive at least one stream';
-        }
-        Logger.debug(`Info Player id=${this.id} receiveAudio=${this.receiveAudio} receiveVideo=${this.receiveVideo}`);
+        Logger.debug(`Info Player id=${this.id}`);
         this.emit('postPlay', this.id, this.eventArg);
-        this.res.write(FLV.NodeFlvMuxer.createFlvHeader(publiser.hasAudio && this.receiveAudio, publiser.hasVideo && this.receiveVideo));
+        this.res.write(FLV.NodeFlvMuxer.createFlvHeader(publiser.hasAudio, publiser.hasVideo));
 
         if (publiser.flvDemuxer.medaData) {
           this.res.write(FLV.NodeFlvMuxer.createFlvTag(18, 0, publiser.flvDemuxer.medaData));
         }
-        if (publiser.flvDemuxer.aacSequenceHeader && this.receiveAudio) {
+        if (publiser.flvDemuxer.aacSequenceHeader) {
           this.res.write(FLV.NodeFlvMuxer.createFlvTag(8, 0, publiser.flvDemuxer.aacSequenceHeader));
         }
-        if (publiser.flvDemuxer.avcSequenceHeader && this.receiveVideo) {
+        if (publiser.flvDemuxer.avcSequenceHeader) {
           this.res.write(FLV.NodeFlvMuxer.createFlvTag(9, 0, publiser.flvDemuxer.avcSequenceHeader));
         }
-
         if (publiser.gopCacheQueue) {
           for (let chunk of publiser.gopCacheQueue) {
-            if (chunk[0] === 8 && !this.receiveAudio) {
-              continue;
-            }
-            if (chunk[0] === 9 && !this.receiveVideo) {
-              continue;
-            }
             this.res.write(chunk);
           }
         }
@@ -270,9 +256,6 @@ class NodeFlvSession extends NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
-      if (!player.receiveAudio) {
-        continue;
-      }
       player.res.write(flvTag);
       player.numPlayCache++;
       if(player.numPlayCache === 1) {
@@ -304,9 +287,6 @@ class NodeFlvSession extends NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
-      if (!player.receiveVideo) {
-        continue;
-      }
       player.res.write(flvTag);
       player.numPlayCache++;
       if(player.numPlayCache === 1) {
