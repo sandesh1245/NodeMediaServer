@@ -7,6 +7,7 @@
  */
 
 const RTMP_CHUNK_SIZE = 4000;
+
 const RTMP_CHANNEL_AUDIO = 4;
 const RTMP_CHANNEL_VIDEO = 5;
 const RTMP_CHANNEL_DATA = 6;
@@ -114,7 +115,6 @@ class NodeBaseSession {
         player.res.write(flvTag);
       } else if (player.constructor.name === 'NodeRtmpSession') {
         player.res.write(chunkMessage);
-        console.log(chunkMessage);
       }
       player.numPlayCache++;
 
@@ -163,12 +163,10 @@ class NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
-
       
       if (player.numPlayCache === 0) {
         player.res.cork();
       }
-      
 
       if (player.constructor.name === 'NodeFlvSession') {
         player.res.write(flvTag);

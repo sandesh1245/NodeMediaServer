@@ -230,20 +230,20 @@ class NodeFlvDemuxer extends EventEmitter {
   handleScriptData(time, data) {
     let amf0data = AMF.decodeAmf0Data(data);
     if (amf0data && amf0data.cmd === 'onMetaData') {
-      this.medaData = data;
-      this.medaDataObj = amf0data.dataObj;
-      this.audioCodec = this.medaDataObj.audiocodecid || 0;
+      this.metaData = data;
+      this.metaDataObj = amf0data.dataObj;
+      this.audioCodec = this.metaDataObj.audiocodecid || 0;
       this.audioCodecName = AUDIO_CODEC_NAME[this.audioCodec];
-      this.audioChannels = this.medaDataObj.stereo ? 2 : 1;
-      this.audioDataRate = this.medaDataObj.audiodatarate || 0;
-      this.audioSamplerate = this.medaDataObj.audiosamplerate || 0;
-      this.audioSamplesize = this.medaDataObj.audiosamplesize || 0;
-      this.videoCodec = this.medaDataObj.videocodecid || 0;
+      this.audioChannels = this.metaDataObj.stereo ? 2 : 1;
+      this.audioDataRate = this.metaDataObj.audiodatarate || 0;
+      this.audioSamplerate = this.metaDataObj.audiosamplerate || 0;
+      this.audioSamplesize = this.metaDataObj.audiosamplesize || 0;
+      this.videoCodec = this.metaDataObj.videocodecid || 0;
       this.videoCodecName = VIDEO_CODEC_NAME[this.videoCodec];
-      this.videoWidth = this.medaDataObj.width || 0;
-      this.videoHeight = this.medaDataObj.height || 0;
-      this.videoDataRate = this.medaDataObj.videodatarate || 0;
-      this.videoFrameRate = this.medaDataObj.framerate || 0;
+      this.videoWidth = this.metaDataObj.width || 0;
+      this.videoHeight = this.metaDataObj.height || 0;
+      this.videoDataRate = this.metaDataObj.videodatarate || 0;
+      this.videoFrameRate = this.metaDataObj.framerate || 0;
     }
     this.emit('script', time, data);
   }

@@ -155,8 +155,8 @@ class NodeFlvSession extends NodeBaseSession {
         this.emit('postPlay', this.id, this.eventArg);
         this.res.write(FLV.NodeFlvMuxer.createFlvHeader(publiser.hasAudio, publiser.hasVideo));
 
-        if (publiser.flvDemuxer.medaData) {
-          this.res.write(FLV.NodeFlvMuxer.createFlvTag(18, 0, publiser.flvDemuxer.medaData));
+        if (publiser.flvDemuxer.metaData) {
+          this.res.write(FLV.NodeFlvMuxer.createFlvTag(18, 0, publiser.flvDemuxer.metaData));
         }
         if (publiser.flvDemuxer.aacSequenceHeader) {
           this.res.write(FLV.NodeFlvMuxer.createFlvTag(8, 0, publiser.flvDemuxer.aacSequenceHeader));

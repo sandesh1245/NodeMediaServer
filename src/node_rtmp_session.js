@@ -390,6 +390,9 @@ class NodeRtmpSession extends NodeBaseSession {
     this.streamQuery = QueryString.parse(invokeMessage.streamName.split('?')[1]);
     Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
 
+    this.isPlay = true;
+    this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Start', 'Star live');
+
     if(!this.pbs.has(this.streamPath)) {
       this.isIdle = true;
       this.idl.add(this.id);
@@ -400,22 +403,24 @@ class NodeRtmpSession extends NodeBaseSession {
     }
 
     if(this.pbs.has(this.streamPath)) {
+      Logger.log(`Start Player id=${this.id}`);
+      
       let publisherId = this.pbs.get(this.streamPath);
       let publiser = this.ses.get(publisherId);
       publiser.players.add(this.id);
     
-
-      if (publiser.flvDemuxer.medaData) {
+      if (publiser.flvDemuxer.metaData) {
         let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
         rtmpMessage.chunkId = RTMP_CHANNEL_DATA;
-        rtmpMessage.length = publiser.flvDemuxer.medaData.length;
-        rtmpMessage.body = publiser.flvDemuxer.medaData;
+        rtmpMessage.length = publiser.flvDemuxer.metaData.length;
+        rtmpMessage.body = publiser.flvDemuxer.metaData;
         rtmpMessage.type = RTMP_TYPE_DATA;
         rtmpMessage.timestamp = 0;
         rtmpMessage.streamId = 1;
         let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
         this.res.write(chunkMessage);
       }
+
       if (publiser.flvDemuxer.aacSequenceHeader) {
         let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
         rtmpMessage.chunkId = RTMP_CHANNEL_AUDIO;
@@ -425,9 +430,9 @@ class NodeRtmpSession extends NodeBaseSession {
         rtmpMessage.timestamp = 0;
         rtmpMessage.streamId = 1;
         let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
-        console.log(chunkMessage);
         this.res.write(chunkMessage);
       }
+
       if (publiser.flvDemuxer.avcSequenceHeader) {
         let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
         rtmpMessage.chunkId = RTMP_CHANNEL_VIDEO;
@@ -439,14 +444,13 @@ class NodeRtmpSession extends NodeBaseSession {
         let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
         this.res.write(chunkMessage);
       }
+
       if (publiser.rtmpGopCacheQueue) {
         for (let chunk of publiser.rtmpGopCacheQueue) {
           this.res.write(chunk);
         }
       }
-      Logger.log(`Start Player id=${this.id}`);
-      this.isPlay = true;
-      this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Start', 'Star live');
+
     }
 
   }
