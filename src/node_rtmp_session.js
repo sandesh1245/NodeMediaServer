@@ -53,7 +53,8 @@ class NodeRtmpSession extends NodeBaseSession {
     this.ses = ctx.ses;
     this.pbs = ctx.pbs;
     this.idl = ctx.idl;
-    this.socket = socket;
+    this.req = socket;
+    this.res = socket;
     this.tag = 'rtmp';
     this.streamApp = '';
     this.streamName = '';
@@ -78,22 +79,45 @@ class NodeRtmpSession extends NodeBaseSession {
 
   run() {
     this.isStart = true;
-    this.socket.on('end', this.stop.bind(this));
-    this.socket.on('close', this.stop.bind(this));
-    this.socket.on('error', this.stop.bind(this));
-    this.socket.on('timeout', this.stop.bind(this));
-    this.socket.setTimeout(30000);
+    this.req.on('end', this.stop.bind(this));
+    this.req.on('close', this.stop.bind(this));
+    this.req.on('error', this.stop.bind(this));
+    this.req.on('timeout', this.stop.bind(this));
+    this.req.setTimeout(30000);
     this.handleData();
   }
 
   stop() {
     if (this.isStart) {
       this.isStart = false;
-      this.socket.destroy();
+      this.res.destroy();
       this.stopStream();
 
+      if(this.isPlay) {
+        this.stopIdle();
+        let publisherId = this.pbs.get(this.streamPath);
+        let publiser = this.ses.get(publisherId);
+        if (publiser) {
+          publiser.players.delete(this.id);
+        }
+        Logger.log(`Close Player id=${this.id}`);
+      }
+
       if (this.isPublish) {
-        this.pbs.delete(this.streamPath);
+        if (this.players) {
+          for (let playerId of this.players) {
+            let player = this.ses.get(playerId);
+            player.stop();
+          }
+          this.pbs.delete(this.streamPath);
+
+          this.players.clear();
+          this.players = undefined;
+        }
+
+        this.clearGopCache();
+
+        Logger.log(`Close Publisher id=${this.id}`);
       }
 
       this.ses.delete(this.id);
@@ -108,7 +132,7 @@ class NodeRtmpSession extends NodeBaseSession {
       }
       let c1 = await this.readStream(1536);
       let s0s1s2 = RtmpHandshake.generateS0S1S2(c1);
-      this.socket.write(s0s1s2);
+      this.res.write(s0s1s2);
 
       await this.readStream(1536); //c2
 
@@ -292,17 +316,6 @@ class NodeRtmpSession extends NodeBaseSession {
     this.flvDemuxer.parseFlvTag(rtmpMessage.type, rtmpMessage.timestamp, rtmpMessage.body);
   }
 
-  onAudioData(code, pts, dts, flags, data) {
-    // Logger.debug('rtmp onAudioData', pts, dts, flags);
-  }
-
-  onVideoData(code, pts, dts, flags, data) {
-    // Logger.debug('rtmp onVideoData', pts, dts, flags);
-  }
-
-  onScriptData(time, data) {
-  }
-
   onConnect(invokeMessage) {
     Logger.debug('onConnect', invokeMessage);
     invokeMessage.cmdObj.app = invokeMessage.cmdObj.app.split('/')[0];
@@ -327,10 +340,10 @@ class NodeRtmpSession extends NodeBaseSession {
   onDeleteStream(invokeMessage) {
     if (this.streamId > 0) {
       if (this.isPublish) {
-        this.isPublish = false;
+        // this.isPublish = false;
         this.sendStatusMessage(this.streamId, 'status', 'NetStream.Unpublish.Success', 'Stop publishing');
       } else if (this.isPlay) {
-        this.isPlay = false;
+        // this.isPlay = false;
         this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Stop', 'Stop live');
       }
       this.streamId = 0;
@@ -358,17 +371,84 @@ class NodeRtmpSession extends NodeBaseSession {
     }
     this.pbs.set(this.streamPath, this.id);
     this.isPublish = true;
+    this.players = new Set();
     this.flvDemuxer = new FLV.NodeFlvDemuxer();
     this.flvDemuxer.on('audio', this.onAudioData.bind(this));
     this.flvDemuxer.on('video', this.onVideoData.bind(this));
     this.flvDemuxer.on('script', this.onScriptData.bind(this));
+    for (let idleId of this.idl) {
+      let player = this.ses.get(idleId);
+      player.stopIdle();
+    }
     this.sendStatusMessage(this.streamId, 'status', 'NetStream.Publish.Start', `${this.publishStreamPath} is now published.`);
   }
 
-  onPlay(invokeMessage) {
+  async onPlay(invokeMessage) {
     Logger.debug('onPlay', invokeMessage);
-    this.isPlay = true;
-    this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Start', 'Star live');
+    this.streamName = invokeMessage.streamName.split('?')[0];
+    this.streamPath = '/' + this.streamApp + '/' + invokeMessage.streamName.split('?')[0];
+    this.streamQuery = QueryString.parse(invokeMessage.streamName.split('?')[1]);
+    Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
+
+    if(!this.pbs.has(this.streamPath)) {
+      this.isIdle = true;
+      this.idl.add(this.id);
+      Logger.log(`Idle Player id=${this.id}`);
+      await this.waitIdle();
+      this.idl.delete(this.id);
+      this.isIdle = false;
+    }
+
+    if(this.pbs.has(this.streamPath)) {
+      let publisherId = this.pbs.get(this.streamPath);
+      let publiser = this.ses.get(publisherId);
+      publiser.players.add(this.id);
+    
+
+      if (publiser.flvDemuxer.medaData) {
+        let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
+        rtmpMessage.chunkId = RTMP_CHANNEL_DATA;
+        rtmpMessage.length = publiser.flvDemuxer.medaData.length;
+        rtmpMessage.body = publiser.flvDemuxer.medaData;
+        rtmpMessage.type = RTMP_TYPE_DATA;
+        rtmpMessage.timestamp = 0;
+        rtmpMessage.streamId = 1;
+        let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
+        this.res.write(chunkMessage);
+      }
+      if (publiser.flvDemuxer.aacSequenceHeader) {
+        let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
+        rtmpMessage.chunkId = RTMP_CHANNEL_AUDIO;
+        rtmpMessage.length = publiser.flvDemuxer.aacSequenceHeader.length;
+        rtmpMessage.body = publiser.flvDemuxer.aacSequenceHeader;
+        rtmpMessage.type = RTMP_TYPE_AUDIO;
+        rtmpMessage.timestamp = 0;
+        rtmpMessage.streamId = 1;
+        let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
+        console.log(chunkMessage);
+        this.res.write(chunkMessage);
+      }
+      if (publiser.flvDemuxer.avcSequenceHeader) {
+        let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
+        rtmpMessage.chunkId = RTMP_CHANNEL_VIDEO;
+        rtmpMessage.length = publiser.flvDemuxer.avcSequenceHeader.length;
+        rtmpMessage.body = publiser.flvDemuxer.avcSequenceHeader;
+        rtmpMessage.type = RTMP_TYPE_VIDEO;
+        rtmpMessage.timestamp = 0;
+        rtmpMessage.streamId = 1;
+        let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
+        this.res.write(chunkMessage);
+      }
+      if (publiser.rtmpGopCacheQueue) {
+        for (let chunk of publiser.rtmpGopCacheQueue) {
+          this.res.write(chunk);
+        }
+      }
+      Logger.log(`Start Player id=${this.id}`);
+      this.isPlay = true;
+      this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Start', 'Star live');
+    }
+
   }
 
   onPause(invokeMessage) {
@@ -386,26 +466,26 @@ class NodeRtmpSession extends NodeBaseSession {
   sendACK(size) {
     let rtmpBuffer = Buffer.from('02000000000004030000000000000000', 'hex');
     rtmpBuffer.writeUInt32BE(size, 12);
-    this.socket.write(rtmpBuffer);
+    this.res.write(rtmpBuffer);
   }
 
   sendWindowACK(size) {
     let rtmpBuffer = Buffer.from('02000000000004050000000000000000', 'hex');
     rtmpBuffer.writeUInt32BE(size, 12);
-    this.socket.write(rtmpBuffer);
+    this.res.write(rtmpBuffer);
   }
 
   sendSetPeerBandwidth(size, type) {
     let rtmpBuffer = Buffer.from('0200000000000506000000000000000000', 'hex');
     rtmpBuffer.writeUInt32BE(size, 12);
     rtmpBuffer[16] = type;
-    this.socket.write(rtmpBuffer);
+    this.res.write(rtmpBuffer);
   }
 
   sendSetChunkSize(size) {
     let rtmpBuffer = Buffer.from('02000000000004010000000000000000', 'hex');
     rtmpBuffer.writeUInt32BE(size, 12);
-    this.socket.write(rtmpBuffer);
+    this.res.write(rtmpBuffer);
   }
 
   sendStatusMessage(sid, level, code, description) {
@@ -430,7 +510,7 @@ class NodeRtmpSession extends NodeBaseSession {
     rtmpMessage.body = AMF.encodeAmf0Cmd(opt);
     rtmpMessage.length = rtmpMessage.body.length;
     let chunks = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
-    this.socket.write(chunks);
+    this.res.write(chunks);
   }
 
   respondConnect(tid) {

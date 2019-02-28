@@ -164,8 +164,8 @@ class NodeFlvSession extends NodeBaseSession {
         if (publiser.flvDemuxer.avcSequenceHeader) {
           this.res.write(FLV.NodeFlvMuxer.createFlvTag(9, 0, publiser.flvDemuxer.avcSequenceHeader));
         }
-        if (publiser.gopCacheQueue) {
-          for (let chunk of publiser.gopCacheQueue) {
+        if (publiser.flvGopCacheQueue) {
+          for (let chunk of publiser.flvGopCacheQueue) {
             this.res.write(chunk);
           }
         }

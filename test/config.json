@@ -1,6 +1,6 @@
 {
-  "log_level": 3,
-  "gop_cache": true,
+  "log_level": 2,
+  "gop_cache": false,
   "rtmp": {
     "port": 1935,
     "chunk_size": 128

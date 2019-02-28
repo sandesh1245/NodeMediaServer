@@ -90,7 +90,7 @@ class NodeBaseSession {
     rtmpMessage.type = RTMP_TYPE_AUDIO;
     rtmpMessage.timestamp = pts;
     rtmpMessage.streamId = 1;
-    let chunkSize = (this.cfg.rtmp && this.cfg.rtmp.chunk_size) || RTMP_CHUNK_SIZE;
+    let chunkSize = this.cfg.rtmp.chunk_size || RTMP_CHUNK_SIZE;
     let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, chunkSize);
 
     //cache flv gop
@@ -105,16 +105,20 @@ class NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
+
+      if (player.numPlayCache === 0) {
+        player.res.cork();
+      } 
+
       if (player.constructor.name === 'NodeFlvSession') {
         player.res.write(flvTag);
       } else if (player.constructor.name === 'NodeRtmpSession') {
-        player.socket.write(chunkMessage);
+        player.res.write(chunkMessage);
+        console.log(chunkMessage);
       }
-
       player.numPlayCache++;
-      if (player.numPlayCache === 1) {
-        player.res.cork();
-      } else if (player.numPlayCache === 10) {
+
+      if (player.numPlayCache === 10) {
         process.nextTick(() => player.res.uncork());
         player.numPlayCache = 0;
       }
@@ -138,7 +142,7 @@ class NodeBaseSession {
     rtmpMessage.type = RTMP_TYPE_VIDEO;
     rtmpMessage.timestamp = pts;
     rtmpMessage.streamId = 1;
-    let chunkSize = (this.cfg.rtmp && this.cfg.rtmp.chunk_size) || RTMP_CHUNK_SIZE;
+    let chunkSize = this.cfg.rtmp.chunk_size || RTMP_CHUNK_SIZE;
     let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, chunkSize);
 
     //ONLY video is H.264/H.265 enable gop cache
@@ -159,16 +163,21 @@ class NodeBaseSession {
 
     for (let playerId of this.players) {
       let player = this.ses.get(playerId);
+
+      
+      if (player.numPlayCache === 0) {
+        player.res.cork();
+      }
+      
+
       if (player.constructor.name === 'NodeFlvSession') {
         player.res.write(flvTag);
       } else if (player.constructor.name === 'NodeRtmpSession') {
-        player.socket.write(chunkMessage);
+        player.res.write(chunkMessage);
       }
-
       player.numPlayCache++;
-      if (player.numPlayCache === 1) {
-        player.res.cork();
-      } else if (player.numPlayCache === 10) {
+
+      if (player.numPlayCache === 10) {
         process.nextTick(() => player.res.uncork());
         player.numPlayCache = 0;
       }
@@ -186,7 +195,7 @@ class NodeBaseSession {
     rtmpMessage.type = RTMP_TYPE_DATA;
     rtmpMessage.timestamp = time;
     rtmpMessage.streamId = 1;
-    let chunkSize = (this.cfg.rtmp && this.cfg.rtmp.chunk_size) || RTMP_CHUNK_SIZE;
+    let chunkSize = this.cfg.rtmp.chunk_size || RTMP_CHUNK_SIZE;
     let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, chunkSize);
 
     for (let playerId of this.players) {
@@ -194,7 +203,7 @@ class NodeBaseSession {
       if (player.constructor.name === 'NodeFlvSession') {
         player.res.write(flvTag);
       } else if (player.constructor.name === 'NodeRtmpSession') {
-        player.socket.write(chunkMessage);
+        player.res.write(chunkMessage);
       }
     }
 
