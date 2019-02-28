@@ -38,7 +38,6 @@ class NodeFlvSession extends NodeBaseSession {
     this.numPlayCache = 0;
     this.hasAudio = true;
     this.hasVideo = true;
-    this.gopCacheQueue = null;
     this.ses.set(this.id, this);
   }
 
@@ -116,10 +115,8 @@ class NodeFlvSession extends NodeBaseSession {
           this.players = undefined;
         }
 
-        if (this.gopCacheQueue) {
-          this.gopCacheQueue.clear();
-          this.gopCacheQueue = undefined;
-        }
+        this.clearGopCache();
+
         this.emit('donePublish', this.id, this.eventArg);
         Logger.log(`Close Publisher id=${this.id}`);
       }
@@ -239,72 +236,7 @@ class NodeFlvSession extends NodeBaseSession {
     this.stop();
   }
 
-  onAudioData(code, pts, dts, flags, data) {
-    let flvTag = FLV.NodeFlvMuxer.createFlvTag(8, pts, data);
-
-    if (flags === 0) {
-      Logger.debug(
-        `Info Publisher Audio samplerate=${this.flvDemuxer.audioSamplerate} channels=${this.flvDemuxer.audioChannels} code=${this.flvDemuxer.audioCodecName} profile=${
-          this.flvDemuxer.audioProfileName
-        }`
-      );
-    }
-
-    if (this.gopCacheQueue) {
-      this.gopCacheQueue.add(flvTag);
-    }
-
-    for (let playerId of this.players) {
-      let player = this.ses.get(playerId);
-      player.res.write(flvTag);
-      player.numPlayCache++;
-      if(player.numPlayCache === 1) {
-        player.res.cork();
-      } else if(player.numPlayCache === 10) {
-        process.nextTick(() => player.res.uncork());
-        player.numPlayCache = 0;
-      }
-    }
-  }
-
-  onVideoData(code, pts, dts, flags, data) {
-    let flvTag = FLV.NodeFlvMuxer.createFlvTag(9, pts, data);
-    if (code === 7 || code === 12) {
-      if (flags === 0) {
-        this.gopCacheQueue = this.cfg.gop_cache && this.hasVideo ? new Set() : null;
-        Logger.debug(
-          `Info Publisher Video size=${this.flvDemuxer.videoWidth}x${this.flvDemuxer.videoHeight} code=${this.flvDemuxer.videoCodecName} profile=${
-            this.flvDemuxer.videoProfileName
-          }`
-        );
-      } else if (flags === 1 && this.gopCacheQueu) {
-        this.gopCacheQueue.clear();
-      }
-      if (flags > 0 && this.gopCacheQueue) {
-        this.gopCacheQueue.add(flvTag);
-      }
-    }
-
-    for (let playerId of this.players) {
-      let player = this.ses.get(playerId);
-      player.res.write(flvTag);
-      player.numPlayCache++;
-      if(player.numPlayCache === 1) {
-        player.res.cork();
-      } else if(player.numPlayCache === 10) {
-        process.nextTick(() => player.res.uncork());
-        player.numPlayCache = 0;
-      }
-    }
-  }
-
-  onScriptData(time, data) {
-    let flvTag = FLV.NodeFlvMuxer.createFlvTag(18, 0, data);
-    for (let playerId of this.players) {
-      let player = this.ses.get(playerId);
-      player.res.write(flvTag);
-    }
-  }
+  
 }
 
 module.exports = NodeFlvSession;

@@ -73,7 +73,6 @@ class NodeRtmpSession extends NodeBaseSession {
     this.receiveVideo = true;
     this.hasAudio = true;
     this.hasVideo = true;
-    this.gopCacheQueue = null;
     this.ses.set(this.id, this);
   }
 
@@ -115,25 +114,19 @@ class NodeRtmpSession extends NodeBaseSession {
 
       while (this.isStart) {
         let chunkBasicHeader = await this.readStream(1);
-        let fmt = chunkBasicHeader[0] >> 6;
-        let cid = chunkBasicHeader[0] & 0x3f;
-        if (cid === 0) {
-          let extBuf = await this.readStream(1);
-          cid = 64 + extBuf[0];
-        } else if (cid === 1) {
-          let extBuf = await this.readStream(2);
-          cid = 64 + extBuf[0] + (extBuf[1] << 8);
+        let chunkFormat = chunkBasicHeader[0] >> 6;
+        let chunkId = chunkBasicHeader[0] & 0x3f;
+        if (chunkId === 0) {
+          let extChunkBasicHeader = await this.readStream(1);
+          chunkId = 64 + extChunkBasicHeader[0];
+        } else if (chunkId === 1) {
+          let extChunkBasicHeader = await this.readStream(2);
+          chunkId = 64 + extChunkBasicHeader[0] + (extChunkBasicHeader[1] << 8);
         }
 
-        let chunkMessageSize = RTMP_CHUNK_HEADER_SIZE[fmt];
+        let chunkMessageSize = RTMP_CHUNK_HEADER_SIZE[chunkFormat];
         let chunkMessage = await this.readStream(chunkMessageSize);
-        let rtmpMessage;
-        let precedingRtmpMessage = this.inMessages.get(cid);
-        if (precedingRtmpMessage) {
-          rtmpMessage = precedingRtmpMessage;
-        } else {
-          rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
-        }
+        let rtmpMessage = this.inMessages.get(chunkId) || FLV.NodeRtmpMuxer.createRtmpMessage();
 
         if (chunkMessageSize >= 3) {
           rtmpMessage.timestampDelta = chunkMessage.readUIntBE(0, 3);
@@ -151,7 +144,7 @@ class NodeRtmpSession extends NodeBaseSession {
           rtmpMessage.timestampDelta = extTimeBuf.readUInt32BE();
         }
 
-        //realloc payload
+        //realloc payload buffer
         if (rtmpMessage.capabilities < rtmpMessage.length) {
           let oldBuffer = rtmpMessage.payloadBuffer;
           rtmpMessage.capabilities = rtmpMessage.length * 2;
@@ -161,24 +154,29 @@ class NodeRtmpSession extends NodeBaseSession {
           }
         }
 
-        //read chunk
+        //read one chunk
         let nChunkSize = Math.min(this.inChunkSize, rtmpMessage.length - rtmpMessage.readBytes);
         let chunk = await this.readStream(nChunkSize);
         chunk.copy(rtmpMessage.payloadBuffer, rtmpMessage.readBytes);
         rtmpMessage.readBytes += nChunkSize;
+
+        //is chunks read enough
         if (rtmpMessage.readBytes === rtmpMessage.length) {
-          if (fmt === 0) {
+
+          //calculate the timestamp
+          if (chunkFormat === 0) {
             rtmpMessage.timestamp = rtmpMessage.timestampDelta;
           } else {
             rtmpMessage.timestamp += rtmpMessage.timestampDelta;
           }
+
           rtmpMessage.body = rtmpMessage.payloadBuffer.slice(0, rtmpMessage.length);
           this.handleRtmpMessage(rtmpMessage);
           rtmpMessage.readBytes = 0;
           rtmpMessage.body = null;
         }
 
-        this.inMessages.set(cid, rtmpMessage);
+        this.inMessages.set(chunkId, rtmpMessage);
       }
     } catch (e) {
       Logger.error(e);
