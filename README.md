@@ -74,6 +74,7 @@ or
 ffplay http://192.168.0.10:8000/live/stream.flv
 ```
 ### flv.js
+flv.js推荐使用ws-flv播放，在微信X5内核下打开更快，无跨域问题
 ```html
 <script src="https://cdn.bootcss.com/flv.js/1.5.0/flv.min.js"></script>
 <video id="videoElement"></video>
@@ -82,7 +83,7 @@ ffplay http://192.168.0.10:8000/live/stream.flv
         var videoElement = document.getElementById('videoElement');
         var flvPlayer = flvjs.createPlayer({
             type: 'flv',
-            url: 'http://192.168.0.10:8000/live/stream.flv'
+            url: 'ws://192.168.0.10:8000/live/stream.flv'
         });
         flvPlayer.attachMediaElement(videoElement);
         flvPlayer.load();
