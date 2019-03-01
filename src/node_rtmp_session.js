@@ -59,10 +59,10 @@ class NodeRtmpSession extends NodeBaseSession {
     this.streamApp = '';
     this.streamName = '';
     this.streamPath = '';
-    this.streamId = 0;
-    this.isReject = false;
-    this.isStart = false;
     this.isLocal = this.ip === '127.0.0.1';
+    this.isStart = false;
+    this.isReject = false;
+    this.isCreateStream = false;
     this.isIdle = false;
     this.isPlay = false;
     this.isPublish = false;
@@ -91,36 +91,16 @@ class NodeRtmpSession extends NodeBaseSession {
     if (this.isStart) {
       this.isStart = false;
       this.res.destroy();
+      this.onDeleteStream();
       this.stopStream();
-
-      if(this.isPlay) {
-        this.stopIdle();
-        let publisherId = this.pbs.get(this.streamPath);
-        let publiser = this.ses.get(publisherId);
-        if (publiser) {
-          publiser.players.delete(this.id);
-        }
-        Logger.log(`Close Player id=${this.id}`);
-      }
-
-      if (this.isPublish) {
-        if (this.players) {
-          for (let playerId of this.players) {
-            let player = this.ses.get(playerId);
-            player.stop();
-          }
-          this.pbs.delete(this.streamPath);
-
-          this.players.clear();
-          this.players = undefined;
-        }
-
-        this.clearGopCache();
-
-        Logger.log(`Close Publisher id=${this.id}`);
-      }
-
       this.ses.delete(this.id);
+    }
+  }
+
+  reject() {
+    this.isReject = true;
+    if(this.isPlay || this.isPublish) {
+      this.stop();
     }
   }
 
@@ -263,7 +243,7 @@ class NodeRtmpSession extends NodeBaseSession {
     let offset = rtmpMessage.type === RTMP_TYPE_FLEX_MESSAGE ? 1 : 0;
     let payload = rtmpMessage.body.slice(offset, rtmpMessage.length);
     let invokeMessage = AMF.decodeAmf0Cmd(payload);
-    // Logger.log(invokeMessage);
+    // Logger.debug(this.id, invokeMessage);
     switch (invokeMessage.cmd) {
     case 'connect':
       this.onConnect(invokeMessage);
@@ -276,11 +256,9 @@ class NodeRtmpSession extends NodeBaseSession {
       this.onCreateStream(invokeMessage);
       break;
     case 'publish':
-      invokeMessage.streamId = rtmpMessage.streamId;
       this.onPublish(invokeMessage);
       break;
     case 'play':
-      invokeMessage.streamId = rtmpMessage.streamId;
       this.onPlay(invokeMessage);
       break;
     case 'pause':
@@ -292,7 +270,6 @@ class NodeRtmpSession extends NodeBaseSession {
       this.onDeleteStream(invokeMessage);
       break;
     case 'closeStream':
-      invokeMessage.streamId = rtmpMessage.streamId;
       this.onDeleteStream(invokeMessage);
       break;
     case 'receiveAudio':
@@ -317,7 +294,7 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   onConnect(invokeMessage) {
-    Logger.debug('onConnect', invokeMessage);
+    // Logger.debug('onConnect', invokeMessage);
     invokeMessage.cmdObj.app = invokeMessage.cmdObj.app.split('/')[0];
     this.connectCmdObj = invokeMessage.cmdObj;
     this.streamApp = invokeMessage.cmdObj.app;
@@ -329,129 +306,166 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   onCreateStream(invokeMessage) {
-    Logger.debug('onCreateStream', invokeMessage);
-    if (this.streamId > 0) {
+    if (this.isCreateStream) {
       //v2.0.0, Simplified logic, one NetConnect supports only one NetStream
-      return;
+      Logger.error('A stream has been created in this NetConnect.');
+    } else {
+      this.isCreateStream = true;
+      this.respondCreateStream(invokeMessage.transId);
     }
-    this.respondCreateStream(invokeMessage.transId);
   }
 
   onDeleteStream(invokeMessage) {
-    if (this.streamId > 0) {
-      if (this.isPublish) {
-        // this.isPublish = false;
-        this.sendStatusMessage(this.streamId, 'status', 'NetStream.Unpublish.Success', 'Stop publishing');
-      } else if (this.isPlay) {
-        // this.isPlay = false;
-        this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Stop', 'Stop live');
+    // Logger.debug('onDeleteStream', invokeMessage);
+    if (this.isCreateStream) {
+      this.isCreateStream = false;
+      if (this.isPublish || this.isPlay) {
+        this.stopIdle();
       }
-      this.streamId = 0;
     }
-    Logger.debug('onDeleteStream', invokeMessage);
   }
 
-  onPublish(invokeMessage) {
-    Logger.debug('onPublish', invokeMessage);
-    if (typeof invokeMessage.streamName !== 'string') {
-      throw { message: 'The stream name requested for publish does not comply.' };
-    }
+  async onPublish(invokeMessage) {
+    try {
+      if (typeof invokeMessage.streamName !== 'string') {
+        throw 'The stream name requested for publish does not comply.';
+      }
 
-    if (invokeMessage.streamId != this.streamId) {
-      throw `The stream id for the request publish does not match the id created.${invokeMessage.streamId},${this.streamId}`;
-    }
+      //get publish info
+      this.streamName = invokeMessage.streamName.split('?')[0];
+      this.streamPath = '/' + this.streamApp + '/' + invokeMessage.streamName.split('?')[0];
+      this.streamQuery = QueryString.parse(invokeMessage.streamName.split('?')[1]);
+      Logger.log(`New Publisher id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
 
-    this.streamName = invokeMessage.streamName.split('?')[0];
-    this.streamPath = '/' + this.streamApp + '/' + invokeMessage.streamName.split('?')[0];
-    this.streamQuery = QueryString.parse(invokeMessage.streamName.split('?')[1]);
-    Logger.log(`New Publisher id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
+      //is publishing ?
+      if (this.pbs.has(this.streamPath)) {
+        this.sendStatusMessage(this.streamId, 'error', 'NetStream.Publish.BadName', `${this.streamPath} Already publishing.`);
+        throw `Already has a stream publish to ${this.streamPath}.`;
+      }
+      Logger.log(`Start Publisher id=${this.id}`);
+      this.isPublish = true;
+      this.pbs.set(this.streamPath, this.id);
+      this.players = new Set();
+      this.flvDemuxer = new FLV.NodeFlvDemuxer();
+      this.flvDemuxer.on('audio', this.onAudioData.bind(this));
+      this.flvDemuxer.on('video', this.onVideoData.bind(this));
+      this.flvDemuxer.on('script', this.onScriptData.bind(this));
+      
+      //Wake up all waiting players
+      for (let idleId of this.idl) {
+        let player = this.ses.get(idleId);
+        if(player.streamPath === this.streamPath) {
+          player.stopIdle();
+        }
+      }
+      this.sendStatusMessage(this.streamId, 'status', 'NetStream.Publish.Start', `${this.streamPath} is now published.`);
+      
+      await this.waitIdle();
 
-    if (this.pbs.has(this.streamPath)) {
-      throw `Already has a stream publish to ${this.streamPath}`;
+      this.isPublish = false;
+      this.sendStatusMessage(this.streamId, 'status', 'NetStream.Unpublish.Success', 'Stop publishing');
+      
+      //Stop all players
+      for (let playerId of this.players) {
+        let player = this.ses.get(playerId);
+        player.stop();
+      }
+      this.players.clear();
+      this.players = undefined;
+
+      this.pbs.delete(this.streamPath);
+      this.clearGopCache();
+      Logger.log(`Close Publisher id=${this.id}`);
+    } catch (error) {
+      Logger.error(`Error Publisher id=${this.id}, ${error}`);
     }
-    this.pbs.set(this.streamPath, this.id);
-    this.isPublish = true;
-    this.players = new Set();
-    this.flvDemuxer = new FLV.NodeFlvDemuxer();
-    this.flvDemuxer.on('audio', this.onAudioData.bind(this));
-    this.flvDemuxer.on('video', this.onVideoData.bind(this));
-    this.flvDemuxer.on('script', this.onScriptData.bind(this));
-    for (let idleId of this.idl) {
-      let player = this.ses.get(idleId);
-      player.stopIdle();
-    }
-    this.sendStatusMessage(this.streamId, 'status', 'NetStream.Publish.Start', `${this.publishStreamPath} is now published.`);
+    this.onDeleteStream();
   }
 
   async onPlay(invokeMessage) {
-    Logger.debug('onPlay', invokeMessage);
-    this.streamName = invokeMessage.streamName.split('?')[0];
-    this.streamPath = '/' + this.streamApp + '/' + invokeMessage.streamName.split('?')[0];
-    this.streamQuery = QueryString.parse(invokeMessage.streamName.split('?')[1]);
-    Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
+    try {
+      if (typeof invokeMessage.streamName !== 'string') {
+        throw 'The stream name requested for play does not comply.';
+      }
 
-    this.isPlay = true;
-    this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Start', 'Star live');
+      //get play info
+      this.streamName = invokeMessage.streamName.split('?')[0];
+      this.streamPath = '/' + this.streamApp + '/' + invokeMessage.streamName.split('?')[0];
+      this.streamQuery = QueryString.parse(invokeMessage.streamName.split('?')[1]);
+      Logger.log(`New Player id=${this.id} ip=${this.ip} stream_path=${this.streamPath} query=${JSON.stringify(this.streamQuery)} via=${this.tag}`);
 
-    if(!this.pbs.has(this.streamPath)) {
-      this.isIdle = true;
-      this.idl.add(this.id);
-      Logger.log(`Idle Player id=${this.id}`);
-      await this.waitIdle();
-      this.idl.delete(this.id);
-      this.isIdle = false;
-    }
+      this.isPlay = true;
+      this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Start', 'Star live');
 
-    if(this.pbs.has(this.streamPath)) {
-      Logger.log(`Start Player id=${this.id}`);
+      //Determine if there is a matching publisher or wait for
+      if(!this.pbs.has(this.streamPath)) {
+        this.isIdle = true;
+        this.idl.add(this.id);
+        Logger.log(`Idle Player id=${this.id}`);
+        await this.waitIdle();
+        this.idl.delete(this.id);
+        this.isIdle = false;
+      }
+
+      if(this.pbs.has(this.streamPath)) {
+        Logger.log(`Start Player id=${this.id}`);
       
-      let publisherId = this.pbs.get(this.streamPath);
-      let publiser = this.ses.get(publisherId);
-      publiser.players.add(this.id);
-    
-      if (publiser.flvDemuxer.metaData) {
-        let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
-        rtmpMessage.chunkId = RTMP_CHANNEL_DATA;
-        rtmpMessage.length = publiser.flvDemuxer.metaData.length;
-        rtmpMessage.body = publiser.flvDemuxer.metaData;
-        rtmpMessage.type = RTMP_TYPE_DATA;
-        rtmpMessage.timestamp = 0;
-        rtmpMessage.streamId = 1;
-        let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
-        this.res.write(chunkMessage);
-      }
+        let publisherId = this.pbs.get(this.streamPath);
+        let publiser = this.ses.get(publisherId);
+        publiser.players.add(this.id);
 
-      if (publiser.flvDemuxer.aacSequenceHeader) {
-        let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
-        rtmpMessage.chunkId = RTMP_CHANNEL_AUDIO;
-        rtmpMessage.length = publiser.flvDemuxer.aacSequenceHeader.length;
-        rtmpMessage.body = publiser.flvDemuxer.aacSequenceHeader;
-        rtmpMessage.type = RTMP_TYPE_AUDIO;
-        rtmpMessage.timestamp = 0;
-        rtmpMessage.streamId = 1;
-        let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
-        this.res.write(chunkMessage);
-      }
-
-      if (publiser.flvDemuxer.avcSequenceHeader) {
-        let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
-        rtmpMessage.chunkId = RTMP_CHANNEL_VIDEO;
-        rtmpMessage.length = publiser.flvDemuxer.avcSequenceHeader.length;
-        rtmpMessage.body = publiser.flvDemuxer.avcSequenceHeader;
-        rtmpMessage.type = RTMP_TYPE_VIDEO;
-        rtmpMessage.timestamp = 0;
-        rtmpMessage.streamId = 1;
-        let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
-        this.res.write(chunkMessage);
-      }
-
-      if (publiser.rtmpGopCacheQueue) {
-        for (let chunk of publiser.rtmpGopCacheQueue) {
-          this.res.write(chunk);
+        if (publiser.flvDemuxer.metaData) {
+          let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
+          rtmpMessage.chunkId = RTMP_CHANNEL_DATA;
+          rtmpMessage.length = publiser.flvDemuxer.metaData.length;
+          rtmpMessage.body = publiser.flvDemuxer.metaData;
+          rtmpMessage.type = RTMP_TYPE_DATA;
+          rtmpMessage.timestamp = 0;
+          rtmpMessage.streamId = 1;
+          let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
+          this.res.write(chunkMessage);
         }
-      }
+  
+        if (publiser.flvDemuxer.aacSequenceHeader) {
+          let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
+          rtmpMessage.chunkId = RTMP_CHANNEL_AUDIO;
+          rtmpMessage.length = publiser.flvDemuxer.aacSequenceHeader.length;
+          rtmpMessage.body = publiser.flvDemuxer.aacSequenceHeader;
+          rtmpMessage.type = RTMP_TYPE_AUDIO;
+          rtmpMessage.timestamp = 0;
+          rtmpMessage.streamId = 1;
+          let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
+          this.res.write(chunkMessage);
+        }
+  
+        if (publiser.flvDemuxer.avcSequenceHeader) {
+          let rtmpMessage = FLV.NodeRtmpMuxer.createRtmpMessage();
+          rtmpMessage.chunkId = RTMP_CHANNEL_VIDEO;
+          rtmpMessage.length = publiser.flvDemuxer.avcSequenceHeader.length;
+          rtmpMessage.body = publiser.flvDemuxer.avcSequenceHeader;
+          rtmpMessage.type = RTMP_TYPE_VIDEO;
+          rtmpMessage.timestamp = 0;
+          rtmpMessage.streamId = 1;
+          let chunkMessage = FLV.NodeRtmpMuxer.createChunkMessage(rtmpMessage, this.outChunkSize);
+          this.res.write(chunkMessage);
+        }
+  
+        if (publiser.rtmpGopCacheQueue) {
+          for (let chunk of publiser.rtmpGopCacheQueue) {
+            this.res.write(chunk);
+          }
+        }
 
+        await this.waitIdle(); 
+        publiser.players.delete(this.id);
+      }
+      this.isPlay = false;
+      this.sendStatusMessage(this.streamId, 'status', 'NetStream.Play.Stop', 'Stop live');
+      Logger.log(`Close Player id=${this.id}`);
+    } catch (error) {
+      Logger.error(`Error Player id=${this.id}, ${error}`);
     }
+    this.onDeleteStream();
 
   }
 
@@ -536,12 +550,11 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   respondCreateStream(tid) {
-    this.streamId++;
     let opt = {
       cmd: '_result',
       transId: tid,
       cmdObj: null,
-      info: this.streamId
+      info: 1
     };
     this.sendInvokeMessage(0, opt);
   }

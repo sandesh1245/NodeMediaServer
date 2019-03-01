@@ -211,7 +211,9 @@ class NodeFlvSession extends NodeBaseSession {
 
       for (let idleId of this.idl) {
         let player = this.ses.get(idleId);
-        player.stopIdle();
+        if(player.streamPath === this.streamPath) {
+          player.stopIdle();
+        }
       }
       this.emit('postPublish', this.id, this.eventArg);
       Logger.log(`Start Publisher id=${this.id}`);
