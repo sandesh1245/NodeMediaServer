@@ -146,6 +146,9 @@ class NodeFlvDemuxer extends EventEmitter {
     case 9:
       this.handleVideoData(tagTime, tagBody);
       break;
+    case 15:
+      this.handleScriptData3(tagTime, tagBody);
+      break;
     case 18:
       this.handleScriptData(tagTime, tagBody);
       break;
@@ -227,12 +230,16 @@ class NodeFlvDemuxer extends EventEmitter {
     this.emit('video', codec_id, time, dts, flags, data);
   }
 
+  handleScriptData3(time, data) {
+    this.handleScriptData(time, data.slice(1));
+  }
+
   handleScriptData(time, data) {
     let amf0data = AMF.decodeAmf0Data(data);
-    if (amf0data ) {
-      if(amf0data.cmd === 'onMetaData' ) {
+    if (amf0data.dataObj) {
+      if (amf0data.cmd === 'onMetaData') {
         this.metaData = data;
-      } else if(amf0data.method === 'onMetaData') {
+      } else if (amf0data.method === 'onMetaData') {
         let opt = {
           cmd: 'onMetaData',
           dataObj: amf0data.dataObj
@@ -241,7 +248,7 @@ class NodeFlvDemuxer extends EventEmitter {
       } else {
         return;
       }
-      
+
       this.metaDataObj = amf0data.dataObj;
       this.audioCodec = this.metaDataObj.audiocodecid || 0;
       this.audioCodecName = AUDIO_CODEC_NAME[this.audioCodec];

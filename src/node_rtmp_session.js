@@ -313,9 +313,7 @@ class NodeRtmpSession extends NodeBaseSession {
   }
 
   rtmpDataHandler(rtmpMessage) {
-    let offset = rtmpMessage.type === RTMP_TYPE_FLEX_STREAM ? 1 : 0;
-    let payload = rtmpMessage.body.slice(offset, rtmpMessage.length);
-    this.flvDemuxer.parseFlvTag(rtmpMessage.type, rtmpMessage.timestamp, payload);
+    this.flvDemuxer.parseFlvTag(rtmpMessage.type, rtmpMessage.timestamp, rtmpMessage.body);
   }
 
   onConnect(invokeMessage) {
