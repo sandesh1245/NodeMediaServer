@@ -1,5 +1,5 @@
-# Node-Media-Server-v2
-下一代Node-Media-Server，仍在开发中。
+# Node-Media-Server-async
+async await版的Node-Media-Server
 
 ## 使用
 
